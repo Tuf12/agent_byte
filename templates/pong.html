@@ -1,0 +1,2289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Byte v1.2 - Knowledge System Enhanced Pong</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #000 0%, #1a1a2e 50%, #16213e 100%);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            touch-action: manipulation;
+        }
+        
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            padding: 10px;
+        }
+        
+        .title {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        .title h1 {
+            font-size: 2rem;
+            background: linear-gradient(45deg, #ff4444, #ff8800, #ffaa00, #00ff88, #66aaff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 5px;
+        }
+        
+        .title .subtitle {
+            color: #ff6666;
+            font-size: 1rem;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .title .features {
+            color: #00ff88;
+            font-size: 0.8rem;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        
+        .title .knowledge-features {
+            color: #66aaff;
+            font-size: 0.8rem;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        
+        .version-badge {
+            background: linear-gradient(45deg, #ff4444, #ff8800, #66aaff);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        
+        .score-board {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+            font-size: 2rem;
+            margin-bottom: 10px;
+            padding: 0 20px;
+        }
+        
+        .player-score { color: #00ff00; }
+        .ai-score { color: #ff4444; }
+        .score-middle { 
+            color: #666; 
+            font-size: 1rem; 
+            text-align: center;
+        }
+        
+        #gameCanvas {
+            border: 2px solid #ff6666;
+            background: #000;
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 0 20px rgba(255, 102, 102, 0.3);
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 700px;
+        }
+        
+        .game-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+            min-width: 100px;
+        }
+        
+        .btn-primary { background: #00ff00; color: #000; }
+        .btn-danger { background: #ff4444; color: #fff; }
+        .btn-secondary { background: #666; color: #fff; }
+        .btn-ai { background: linear-gradient(45deg, #ff4444, #ff8800); color: #fff; }
+        .btn-smart { background: linear-gradient(45deg, #ff8800, #ffaa00); color: #000; }
+        .btn-demo { background: linear-gradient(45deg, #66aaff, #00ff88); color: #000; }
+        .btn-demo-active { background: linear-gradient(45deg, #00ff88, #66aaff); color: #000; }
+        .btn-demo-inactive { background: #666; color: #ccc; }
+        .btn-knowledge { background: linear-gradient(45deg, #8866ff, #66aaff); color: #fff; }
+        .btn-knowledge-active { background: linear-gradient(45deg, #66aaff, #8866ff); color: #fff; }
+        .btn-knowledge-inactive { background: #444; color: #aaa; }
+        
+        .btn:hover { transform: scale(1.05); }
+        .btn:active { transform: scale(0.95); }
+        
+        .paddle-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .touch-controls {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .touch-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.1);
+            color: #00ff00;
+            font-size: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.1s;
+        }
+        
+        .touch-btn:active {
+            background: rgba(0, 255, 0, 0.3);
+            transform: scale(0.9);
+        }
+        
+        .stats-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 10px;
+            width: 100%;
+            backdrop-filter: blur(5px);
+        }
+        
+        .stats-section h3 {
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.2rem;
+        }
+        
+        .ai-stats { border: 2px solid #ff4444; }
+        .ai-stats h3 { color: #ff6666; }
+        
+        .knowledge-stats { border: 2px solid #66aaff; }
+        .knowledge-stats h3 { color: #66aaff; }
+        
+        .user-demo-stats { border: 2px solid #66aaff; }
+        .user-demo-stats h3 { color: #66aaff; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .stat-label { color: #ccc; }
+        .stat-value { color: #fff; font-weight: bold; }
+        
+        .performance-indicators {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .learning-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            background: rgba(255, 102, 102, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .knowledge-system-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            font-size: 0.9rem;
+            background: rgba(102, 170, 255, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #66aaff;
+        }
+        
+        .knowledge-status {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .knowledge-status-label {
+            font-size: 0.8rem;
+            color: #ccc;
+            text-transform: uppercase;
+        }
+        
+        .knowledge-status-value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .knowledge-active { color: #00ff88; }
+        .knowledge-inactive { color: #ff8888; }
+        
+        .demo-learning-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            font-size: 0.9rem;
+            background: rgba(102, 170, 255, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #66aaff;
+        }
+        
+        .demo-status {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .demo-status-label {
+            font-size: 0.8rem;
+            color: #ccc;
+            text-transform: uppercase;
+        }
+        
+        .demo-status-value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .demo-active { color: #00ff88; }
+        .demo-inactive { color: #ff8888; }
+        
+        .streak-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            font-size: 0.9rem;
+            background: rgba(255, 136, 0, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ff8800;
+        }
+        
+        .streak-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .streak-label {
+            font-size: 0.8rem;
+            color: #ccc;
+            text-transform: uppercase;
+        }
+        
+        .streak-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .hit-streak { color: #00ff00; }
+        .miss-streak { color: #ff4444; }
+        
+        .exploration-bar {
+            width: 100px;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .exploration-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #ffff00, #ff4444);
+            transition: width 0.3s ease;
+        }
+        
+        .demo-effectiveness-bar {
+            width: 100px;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .demo-effectiveness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #66aaff, #00ff88, #ffff00);
+            transition: width 0.3s ease;
+        }
+        
+        .knowledge-effectiveness-bar {
+            width: 100px;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .knowledge-effectiveness-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #8866ff, #66aaff, #00ff88);
+            transition: width 0.3s ease;
+        }
+        
+        .learning-phase {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .phase-exploring { background: #ffff00; color: #000; }
+        .phase-learning { background: #ff8800; color: #fff; }
+        .phase-optimizing { background: #0080ff; color: #fff; }
+        .phase-expert { background: #00ff00; color: #000; }
+        
+        .neural-architecture {
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            color: #ff8800;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        .performance-features {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #ffaa00;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+        
+        .dueling-architecture {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #00ff88;
+            margin: 5px 0;
+            font-weight: bold;
+            border: 1px solid #00ff88;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        .knowledge-architecture {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #66aaff;
+            margin: 5px 0;
+            font-weight: bold;
+            border: 1px solid #66aaff;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        .loss-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 5px 0;
+        }
+        
+        .loss-bar {
+            flex: 1;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .loss-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #ffff00, #ff4444);
+            transition: width 0.3s ease;
+        }
+        
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .controls-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            text-align: center;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .status.connected { color: #00ff00; border: 1px solid #00ff00; }
+        .status.disconnected { color: #ff4444; border: 1px solid #ff4444; }
+        
+        .learning-tip {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid #ff4444;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            text-align: center;
+            color: #ff6666;
+            line-height: 1.4;
+        }
+        
+        .user-demo-tip {
+            background: rgba(102, 170, 255, 0.1);
+            border: 1px solid #66aaff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            text-align: center;
+            color: #66aaff;
+            line-height: 1.4;
+        }
+        
+        .knowledge-tip {
+            background: rgba(136, 102, 255, 0.1);
+            border: 1px solid #8866ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            text-align: center;
+            color: #8866ff;
+            line-height: 1.4;
+        }
+        
+        .reward-explanation {
+            font-size: 0.75rem;
+            color: #ccc;
+            margin-top: 10px;
+            text-align: center;
+            line-height: 1.3;
+        }
+        
+        .training-pulse {
+            animation: pulse 1.5s infinite;
+        }
+        
+        .streak-pulse {
+            animation: streak-pulse 2s infinite;
+        }
+        
+        .demo-pulse {
+            animation: demo-pulse 3s infinite;
+        }
+        
+        .knowledge-pulse {
+            animation: knowledge-pulse 2.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes streak-pulse {
+            0%, 100% { color: #ffaa00; }
+            50% { color: #ffff00; }
+        }
+        
+        @keyframes demo-pulse {
+            0%, 100% { color: #66aaff; }
+            50% { color: #00ff88; }
+        }
+        
+        @keyframes knowledge-pulse {
+            0%, 100% { color: #8866ff; }
+            50% { color: #66aaff; }
+        }
+        
+        .bonus-indicator {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            border-radius: 6px;
+            padding: 8px;
+            margin: 5px 0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #00ff88;
+        }
+        
+        .penalty-indicator {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid #ff4444;
+            border-radius: 6px;
+            padding: 8px;
+            margin: 5px 0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #ff8888;
+        }
+        
+        /* Knowledge System Sections */
+        .knowledge-system-section {
+            background: rgba(136, 102, 255, 0.1);
+            border: 2px solid #8866ff;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .knowledge-system-section h4 {
+            color: #8866ff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .knowledge-controls {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        
+        .knowledge-controls .btn {
+            font-size: 0.8rem;
+            padding: 8px 16px;
+            min-width: 80px;
+        }
+        
+        .knowledge-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .knowledge-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(136, 102, 255, 0.2);
+        }
+        
+        .knowledge-stat-label { color: #bbaaff; }
+        .knowledge-stat-value { color: #8866ff; font-weight: bold; }
+        
+        /* Decision Analysis Section */
+        .decision-analysis {
+            background: rgba(102, 170, 255, 0.1);
+            border: 1px solid #66aaff;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .decision-analysis h4 {
+            color: #66aaff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .decision-counters {
+            display: flex;
+            justify-content: space-around;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        
+        .decision-counter {
+            text-align: center;
+            padding: 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .decision-counter-label {
+            font-size: 0.7rem;
+            color: #ccc;
+            text-transform: uppercase;
+        }
+        
+        .decision-counter-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+        
+        .symbolic-decisions { color: #8866ff; }
+        .neural-decisions { color: #ff8800; }
+        
+        /* User Performance Section */
+        .user-performance-section {
+            background: rgba(0, 255, 136, 0.1);
+            border: 2px solid #00ff88;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .user-performance-section h4 {
+            color: #00ff88;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .user-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .user-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+        }
+        
+        .user-stat-label { color: #aaffcc; }
+        .user-stat-value { color: #00ff88; font-weight: bold; }
+        
+        /* Demo Learning Section */
+        .demo-learning-section {
+            background: rgba(102, 170, 255, 0.1);
+            border: 2px solid #66aaff;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .demo-learning-section h4 {
+            color: #66aaff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .demo-controls {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        
+        .demo-controls .btn {
+            font-size: 0.8rem;
+            padding: 8px 16px;
+            min-width: 80px;
+        }
+        
+        .demo-parameters {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .parameter-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+        }
+        
+        .parameter-label {
+            min-width: 100px;
+            color: #aaccff;
+        }
+        
+        .parameter-slider {
+            flex: 1;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .parameter-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #66aaff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .parameter-value {
+            min-width: 40px;
+            color: #66aaff;
+            font-weight: bold;
+        }
+        
+        .hit-to-score-section {
+            background: rgba(0, 255, 136, 0.1);
+            border: 2px solid #00ff88;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .hit-to-score-section h4 {
+            color: #00ff88;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .hit-to-score-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .hit-to-score-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+        }
+        
+        .hit-to-score-label { color: #aaffcc; }
+        .hit-to-score-value { color: #00ff88; font-weight: bold; }
+        
+        .symbolic-tracking {
+            background: rgba(102, 170, 255, 0.1);
+            border: 1px solid #66aaff;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .symbolic-tracking h4 {
+            color: #66aaff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .symbolic-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .symbolic-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(102, 170, 255, 0.2);
+        }
+        
+        .symbolic-label { color: #aaccff; }
+        .symbolic-value { color: #66aaff; font-weight: bold; }
+        
+        /* Match tracking styles */
+        .match-tracking {
+            background: rgba(0, 136, 255, 0.1);
+            border: 1px solid #0088ff;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .match-tracking h4 {
+            color: #66aaff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        
+        .current-match-reward {
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid #ffaa00;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 8px 0;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #ffaa00;
+            font-weight: bold;
+        }
+        
+        .round-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .round-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .round-stat-label { color: #aac; }
+        .round-stat-value { color: #fff; font-weight: bold; }
+        
+        .recent-performance {
+            background: rgba(102, 170, 255, 0.1);
+            border: 1px solid #66aaff;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 8px 0;
+            font-size: 0.8rem;
+        }
+        
+        .recent-performance h5 {
+            color: #66aaff;
+            margin-bottom: 8px;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+        
+        .recent-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .recent-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            padding: 3px 0;
+        }
+        
+        .recent-stat-label { color: #aac; }
+        .recent-stat-value { color: #fff; font-weight: bold; }
+        
+        @media (max-width: 768px) {
+            .score-board { font-size: 1.5rem; margin-bottom: 5px; }
+            .touch-btn { width: 70px; height: 70px; font-size: 1.5rem; }
+            .btn { padding: 10px 20px; font-size: 0.9rem; min-width: 80px; }
+            .stats-grid { grid-template-columns: 1fr; gap: 5px; }
+            .round-stats { grid-template-columns: 1fr; gap: 4px; }
+            .recent-stats { grid-template-columns: 1fr; gap: 4px; }
+            .hit-to-score-stats { grid-template-columns: 1fr; gap: 4px; }
+            .symbolic-stats { grid-template-columns: 1fr; gap: 4px; }
+            .user-stats { grid-template-columns: 1fr; gap: 4px; }
+            .knowledge-stats { grid-template-columns: 1fr; gap: 4px; }
+            .title h1 { font-size: 1.5rem; }
+            .streak-indicator { flex-direction: column; gap: 10px; }
+            .demo-learning-indicator { flex-direction: column; gap: 10px; }
+            .knowledge-system-indicator { flex-direction: column; gap: 10px; }
+            .demo-controls { gap: 5px; }
+            .demo-controls .btn { font-size: 0.7rem; padding: 6px 12px; }
+            .knowledge-controls { gap: 5px; }
+            .knowledge-controls .btn { font-size: 0.7rem; padding: 6px 12px; }
+            .decision-counters { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="title">
+            <h1>🧠 Agent Byte v1.2 - Knowledge System Enhanced Pong</h1>
+            <div class="subtitle">NEURAL + SYMBOLIC AI • INTELLIGENT STRATEGY APPLICATION</div>
+            <div class="features">Dueling Networks • Double DQN • User Demo Learning</div>
+            <div class="knowledge-features">🧩 Situation Analysis • Strategic Decision Making • Environmental Understanding</div>
+            <div class="version-badge">v1.2 Knowledge System Enhanced</div>
+        </div>
+        
+        <div class="score-board">
+            <div class="player-score">You: <span id="playerScore">0</span></div>
+            <div class="score-middle">First to <span id="winningScore">21</span> wins</div>
+            <div class="ai-score">Agent Byte: <span id="aiScore">0</span></div>
+        </div>
+        
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        
+        <div class="controls">
+            <div class="game-controls">
+                <button class="btn btn-primary" id="startBtn">🚀 Start Game</button>
+                <button class="btn btn-danger" id="stopBtn">⏹️ Stop Game</button>
+                <button class="btn btn-secondary" id="newGameBtn">🎮 New Game</button>
+            </div>
+            
+            <div class="paddle-controls">
+                <label>Touch Controls:</label>
+                <div class="touch-controls">
+                    <div class="touch-btn" id="upBtn">↑</div>
+                    <div class="touch-btn" id="downBtn">↓</div>
+                </div>
+            </div>
+            
+            <!-- NEW: Adaptive Learning System Status -->
+            <div class="adaptive-learning-section">
+                <h4>🔧 Adaptive Learning System</h4>
+                
+                <div class="adaptive-learning-indicator">
+                    <div class="adaptive-status">
+                        <div class="adaptive-status-label">System</div>
+                        <div class="adaptive-status-value adaptive-pulse" id="adaptiveLearningStatus">ACTIVE</div>
+                    </div>
+                    <div class="adaptive-status">
+                        <div class="adaptive-status-label">Current Gamma</div>
+                        <div class="adaptive-status-value" id="currentGammaValue">0.990</div>
+                    </div>
+                    <div class="adaptive-status">
+                        <div class="adaptive-status-label">Source</div>
+                        <div class="adaptive-status-value" id="gammaSource">default</div>
+                    </div>
+                </div>
+                
+                <div class="gamma-comparison">
+                    <div class="gamma-detail">
+                        <span class="gamma-label">Default Gamma:</span>
+                        <span class="gamma-value" id="defaultGammaValue">0.990</span>
+                    </div>
+                    <div class="gamma-detail">
+                        <span class="gamma-label">Environment Gamma:</span>
+                        <span class="gamma-value" id="environmentGammaValue">0.900</span>
+                    </div>
+                    <div class="gamma-detail">
+                        <span class="gamma-label">Adaptation Status:</span>
+                        <span class="gamma-value adaptive-pulse" id="adaptationStatus">Adapted</span>
+                    </div>
+                </div>
+                
+                <div class="adaptive-controls">
+                    <button class="btn btn-adaptive" id="toggleAdaptiveLearningBtn">🔧 Toggle System</button>
+                    <button class="btn btn-secondary" id="getAdaptiveAnalysisBtn">📊 Analysis</button>
+                    <button class="btn btn-secondary" id="getGammaComparisonBtn">🎯 Gamma History</button>
+                    <button class="btn btn-secondary" id="getCurrentGammaInfoBtn">📋 Current Info</button>
+                </div>
+                
+                <div class="adaptive-rationale">
+                    <div class="rationale-label">Adaptation Rationale:</div>
+                    <div class="rationale-text" id="adaptationRationale">Environment-specific optimization</div>
+                </div>
+            </div>
+
+            <!-- Knowledge System Status -->
+            <div class="knowledge-system-section">
+                <h4>🧩 Knowledge System Status</h4>
+            
+            <!-- NEW: Knowledge System Status -->
+            <div class="knowledge-system-section">
+                <h4>🧩 Knowledge System Status</h4>
+                
+                <div class="knowledge-system-indicator">
+                    <div class="knowledge-status">
+                        <div class="knowledge-status-label">System</div>
+                        <div class="knowledge-status-value knowledge-pulse" id="knowledgeSystemStatus">ACTIVE</div>
+                    </div>
+                    <div class="knowledge-status">
+                        <div class="knowledge-status-label">Effectiveness</div>
+                        <div class="knowledge-effectiveness-bar">
+                            <div class="knowledge-effectiveness-fill" id="knowledgeEffectivenessFill" style="width: 0%"></div>
+                        </div>
+                        <div class="knowledge-status-value" id="knowledgeEffectivenessText">0%</div>
+                    </div>
+                    <div class="knowledge-status">
+                        <div class="knowledge-status-label">Strategies</div>
+                        <div class="knowledge-status-value" id="strategiesAvailable">0</div>
+                    </div>
+                </div>
+                
+                <div class="knowledge-controls">
+                    <button class="btn btn-knowledge" id="toggleKnowledgeSystemBtn">🧩 Toggle System</button>
+                    <button class="btn btn-secondary" id="getKnowledgeAnalysisBtn">📊 Analysis</button>
+                    <button class="btn btn-secondary" id="getStrategyPerformanceBtn">🎯 Performance</button>
+                </div>
+                
+                <div class="knowledge-stats">
+                    <div class="knowledge-stat">
+                        <span class="knowledge-stat-label">Strategies Available:</span>
+                        <span class="knowledge-stat-value" id="knowledgeStrategiesCount">0</span>
+                    </div>
+                    <div class="knowledge-stat">
+                        <span class="knowledge-stat-label">Lessons Learned:</span>
+                        <span class="knowledge-stat-value" id="knowledgeLessonsCount">0</span>
+                    </div>
+                    <div class="knowledge-stat">
+                        <span class="knowledge-stat-label">This Match Lessons:</span>
+                        <span class="knowledge-stat-value" id="knowledgeLessonsThisMatch">0</span>
+                    </div>
+                    <div class="knowledge-stat">
+                        <span class="knowledge-stat-label">Strategies Discovered:</span>
+                        <span class="knowledge-stat-value" id="knowledgeStrategiesDiscovered">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- NEW: Decision Analysis -->
+            <div class="decision-analysis">
+                <h4>🎯 Decision Analysis</h4>
+                <div class="decision-counters">
+                    <div class="decision-counter">
+                        <div class="decision-counter-label">Symbolic</div>
+                        <div class="decision-counter-value symbolic-decisions knowledge-pulse" id="symbolicDecisions">0</div>
+                    </div>
+                    <div class="decision-counter">
+                        <div class="decision-counter-label">Neural</div>
+                        <div class="decision-counter-value neural-decisions" id="neuralDecisions">0</div>
+                    </div>
+                    <div class="decision-counter">
+                        <div class="decision-counter-label">Intelligence Ratio</div>
+                        <div class="decision-counter-value" id="intelligenceRatio">0%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- User Performance Section -->
+            <div class="user-performance-section">
+                <h4>👤 Your Performance This Game</h4>
+                <div class="user-stats">
+                    <div class="user-stat">
+                        <span class="user-stat-label">Your Hits:</span>
+                        <span class="user-stat-value hit-streak" id="userHits">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Your Misses:</span>
+                        <span class="user-stat-value miss-streak" id="userMisses">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Your Hit Rate:</span>
+                        <span class="user-stat-value" id="userHitRate">0%</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Your Successful Defenses:</span>
+                        <span class="user-stat-value hit-streak" id="userDefenses">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Actions Recorded:</span>
+                        <span class="user-stat-value" id="userActionsRecorded">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- User Demo Learning Section -->
+            <div class="demo-learning-section">
+                <h4>🎓 User Demo Learning System</h4>
+                
+                <div class="demo-learning-indicator">
+                    <div class="demo-status">
+                        <div class="demo-status-label">Learning</div>
+                        <div class="demo-status-value demo-pulse" id="demoLearningStatus">ON</div>
+                    </div>
+                    <div class="demo-status">
+                        <div class="demo-status-label">Recording</div>
+                        <div class="demo-status-value demo-pulse" id="demoRecordingStatus">ACTIVE</div>
+                    </div>
+                    <div class="demo-status">
+                        <div class="demo-status-label">Effectiveness</div>
+                        <div class="demo-effectiveness-bar">
+                            <div class="demo-effectiveness-fill" id="demoEffectivenessFill" style="width: 0%"></div>
+                        </div>
+                        <div class="demo-status-value" id="demoEffectivenessText">0%</div>
+                    </div>
+                </div>
+                
+                <div class="demo-controls">
+                    <button class="btn btn-demo" id="toggleDemoLearningBtn">🎓 Toggle Learning</button>
+                    <button class="btn btn-demo" id="toggleDemoRecordingBtn">📹 Toggle Recording</button>
+                    <button class="btn btn-danger" id="clearDemosBtn">🗑️ Clear Demos</button>
+                    <button class="btn btn-secondary" id="getDemoStatsBtn">📊 Demo Stats</button>
+                </div>
+                
+                <div class="demo-parameters">
+                    <div class="parameter-control">
+                        <span class="parameter-label">Learning Weight:</span>
+                        <input type="range" class="parameter-slider" id="demoWeightSlider" min="0.1" max="1.0" step="0.1" value="0.3">
+                        <span class="parameter-value" id="demoWeightValue">0.3</span>
+                    </div>
+                    <div class="parameter-control">
+                        <span class="parameter-label">Demo Ratio:</span>
+                        <input type="range" class="parameter-slider" id="demoRatioSlider" min="0.1" max="0.5" step="0.05" value="0.25">
+                        <span class="parameter-value" id="demoRatioValue">0.25</span>
+                    </div>
+                </div>
+                
+                <div class="user-stats">
+                    <div class="user-stat">
+                        <span class="user-stat-label">Demos Available:</span>
+                        <span class="user-stat-value" id="demosAvailable">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Demos This Match:</span>
+                        <span class="user-stat-value" id="demosThisMatch">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Demos Used in Training:</span>
+                        <span class="user-stat-value" id="demosUsed">0</span>
+                    </div>
+                    <div class="user-stat">
+                        <span class="user-stat-label">Demo Buffer Usage:</span>
+                        <span class="user-stat-value" id="demoBufferUsage">0/1000</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-section ai-stats">
+                <h3>🧠 Agent Byte v1.2 - Knowledge System Enhanced</h3>
+                
+                <div class="neural-architecture">
+                    14→64→32→16→[V(1)+A(3)] Dueling Network + Knowledge System
+                </div>
+                
+                <div class="dueling-architecture">
+                    Double DQN + Soft Target Updates + Symbolic Task Learning + Demo Integration
+                </div>
+                
+                <div class="knowledge-architecture">
+                    🧩 Intelligent Strategy Selection • Environmental Context Awareness • Performance Optimization
+                </div>
+                
+                <div class="performance-features">
+                    HIT-TO-SCORE BONUS • USER DEMO LEARNING • KNOWLEDGE SYSTEM ENHANCED
+                </div>
+                
+                <!-- Hit-to-Score Bonus Section -->
+                <div class="hit-to-score-section">
+                    <h4>🎳 Hit-to-Score Bonus System</h4>
+                    <div class="current-match-reward">
+                        🎯 Bonus Achieved: Score after hitting = +1 extra reward!
+                    </div>
+                    <div class="hit-to-score-stats">
+                        <div class="hit-to-score-stat">
+                            <span class="hit-to-score-label">Match Bonuses:</span>
+                            <span class="hit-to-score-value" id="matchHitBonuses">0</span>
+                        </div>
+                        <div class="hit-to-score-stat">
+                            <span class="hit-to-score-label">Total Lifetime Bonuses:</span>
+                            <span class="hit-to-score-value" id="lifetimeHitBonuses">0</span>
+                        </div>
+                        <div class="hit-to-score-stat">
+                            <span class="hit-to-score-label">Total Bonus Reward:</span>
+                            <span class="hit-to-score-value" id="totalBonusReward">0.0</span>
+                        </div>
+                        <div class="hit-to-score-stat">
+                            <span class="hit-to-score-label">Bonus Success Rate:</span>
+                            <span class="hit-to-score-value" id="bonusSuccessRate">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Symbolic Task Tracking -->
+                <div class="symbolic-tracking">
+                    <h4>🎯 Symbolic Task Performance</h4>
+                    <div class="symbolic-stats">
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Task Successes:</span>
+                            <span class="symbolic-value hit-streak" id="taskSuccesses">0</span>
+                        </div>
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Task Failures:</span>
+                            <span class="symbolic-value miss-streak" id="taskFailures">0</span>
+                        </div>
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Success Rate:</span>
+                            <span class="symbolic-value" id="taskSuccessRate">0%</span>
+                        </div>
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Task Completions:</span>
+                            <span class="symbolic-value hit-streak" id="taskCompletions">0</span>
+                        </div>
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Success Streak:</span>
+                            <span class="symbolic-value hit-streak" id="successStreak">0</span>
+                        </div>
+                        <div class="symbolic-stat">
+                            <span class="symbolic-label">Best Streak:</span>
+                            <span class="symbolic-value hit-streak" id="bestSuccessStreak">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Current Round Tracking Section -->
+                <div class="match-tracking">
+                    <h4>🎮 Current Round Performance</h4>
+                    <div class="current-match-reward">
+                        💰 Current Round Reward: <span id="currentMatchReward">0.0</span>
+                    </div>
+                    <div class="round-stats">
+                        <div class="round-stat">
+                            <span class="round-stat-label">Round Hits:</span>
+                            <span class="round-stat-value hit-streak" id="roundHits">0</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">Round Misses:</span>
+                            <span class="round-stat-value miss-streak" id="roundMisses">0</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">Round Hit Rate:</span>
+                            <span class="round-stat-value" id="roundHitRate">0%</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">Best Hit Streak This Round:</span>
+                            <span class="round-stat-value hit-streak" id="roundBestHitStreak">0</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">Round Hit-to-Score Bonuses:</span>
+                            <span class="round-stat-value hit-streak" id="roundHitToScoreBonuses">0</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">User Demos This Round:</span>
+                            <span class="round-stat-value demo-pulse" id="roundUserDemos">0</span>
+                        </div>
+                        <div class="round-stat">
+                            <span class="round-stat-label">Knowledge Decisions:</span>
+                            <span class="round-stat-value knowledge-pulse" id="roundKnowledgeDecisions">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="performance-indicators">
+                    <div class="learning-indicator">
+                        <span>Exploration:</span>
+                        <div class="exploration-bar">
+                            <div class="exploration-fill" id="explorationFill" style="width: 75%"></div>
+                        </div>
+                        <span id="explorationText">75%</span>
+                        <span class="learning-phase phase-exploring" id="learningPhase">Exploring</span>
+                    </div>
+                    
+                    <div class="streak-indicator">
+                        <div class="streak-section">
+                            <div class="streak-label">Current Hit Streak</div>
+                            <div class="streak-value hit-streak streak-pulse" id="currentHitStreak">0</div>
+                        </div>
+                        <div class="streak-section">
+                            <div class="streak-label">Current Miss Streak</div>
+                            <div class="streak-value miss-streak" id="currentMissStreak">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lifetime Performance Section with Historical Data -->
+                <div class="stats-section" style="border: 2px solid #00ff88; margin-top: 15px;">
+                    <h3 style="color: #00ff88;">📊 Lifetime Performance Records</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Lifetime Hit Rate:</span>
+                            <span class="stat-value" id="lifetimeHitRate" style="color: #00ff88;">0%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Lifetime Hits:</span>
+                            <span class="stat-value" id="lifetimeHits" style="color: #00ff88;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Lifetime Misses:</span>
+                            <span class="stat-value" id="lifetimeMisses" style="color: #ff8888;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Best Hit Streak Ever:</span>
+                            <span class="stat-value hit-streak" id="lifetimeMaxHitStreak" style="color: #00ff88;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Worst Miss Streak Ever:</span>
+                            <span class="stat-value miss-streak" id="lifetimeMaxMissStreak" style="color: #ff8888;">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Games Played:</span>
+                            <span class="stat-value" id="gamesPlayed">0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Performance in Lifetime Section -->
+                    <div class="recent-performance" id="recentPerformanceSection" style="display: none;">
+                        <h5>📈 Recent Performance (Last 10 Matches)</h5>
+                        <div class="recent-stats">
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Recent Win Rate:</span>
+                                <span class="recent-stat-value" id="recentWinRate">0%</span>
+                            </div>
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Recent Hit Rate:</span>
+                                <span class="recent-stat-value" id="recentHitRate">0%</span>
+                            </div>
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Avg Match Reward:</span>
+                                <span class="recent-stat-value" id="recentAvgReward">0.0</span>
+                            </div>
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Recent Hit Bonuses:</span>
+                                <span class="recent-stat-value" id="recentHitBonuses">0.0</span>
+                            </div>
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Avg User Demos:</span>
+                                <span class="recent-stat-value demo-pulse" id="recentUserDemos">0.0</span>
+                            </div>
+                            <div class="recent-stat">
+                                <span class="recent-stat-label">Avg Knowledge Decisions:</span>
+                                <span class="recent-stat-value knowledge-pulse" id="recentKnowledgeDecisions">0.0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bonus-indicator">
+                    💰 Total Hit Bonus Earned: <span id="totalHitBonus">0</span>
+                </div>
+                
+                <div class="penalty-indicator">
+                    💸 Total Miss Penalties: <span id="totalMissPenalty">0</span>
+                </div>
+                
+                <div class="loss-indicator">
+                    <span style="color: #ccc; font-size: 0.8rem;">Training Loss:</span>
+                    <div class="loss-bar">
+                        <div class="loss-fill" id="lossFill" style="width: 50%"></div>
+                    </div>
+                    <span id="lossText" style="color: #fff; font-size: 0.8rem;">0.0000</span>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Agent Byte Wins:</span>
+                        <span class="stat-value" id="agentWins">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Win Rate:</span>
+                        <span class="stat-value" id="winRate">0%</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Training Steps:</span>
+                        <span class="stat-value training-pulse" id="trainingSteps">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Target Updates:</span>
+                        <span class="stat-value" id="targetUpdates" style="color: #00ff88;">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Double DQN Benefits:</span>
+                        <span class="stat-value" id="doubleDqnBenefits" style="color: #66aaff;">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Agent Byte Points:</span>
+                        <span class="stat-value" id="aiPointsScored">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Your Points:</span>
+                        <span class="stat-value" id="aiPointsAllowed">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Network Size:</span>
+                        <span class="stat-value" id="networkParams">15K params</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Experience Buffer:</span>
+                        <span class="stat-value" id="experienceBuffer">0/5000</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">User Demo Buffer:</span>
+                        <span class="stat-value demo-pulse" id="userDemoBuffer">0/1000</span>
+                    </div>
+                </div>
+                
+                <div class="controls-row">
+                    <button class="btn btn-ai" id="saveBrainBtn">💾 Save Agent Byte v1.2</button>
+                    <button class="btn btn-secondary" id="checkpointBtn">📸 Create Checkpoint</button>
+                </div>
+                
+                <div class="controls-row" style="margin-top: 10px;">
+                    <button class="btn btn-smart" id="smartResetBtn">🧠 Smart Reset</button>
+                    <button class="btn btn-secondary" id="clearExperiencesBtn">🗑️ Clear Bad Experiences</button>
+                </div>
+                
+                <div class="controls-section" style="margin-top: 15px; padding: 10px; border: 1px solid #ff8800; border-radius: 8px;">
+                    <div style="text-align: center; color: #ffaa00; font-weight: bold; margin-bottom: 10px;">⚡ Ball Speed Controls</div>
+                    <div class="controls-row">
+                        <button class="btn btn-danger" id="decreaseSpeedBtn">🐌 Slower</button>
+                        <span id="currentSpeed" style="color: #ffaa00; font-weight: bold; min-width: 80px; text-align: center;">Speed: 6</span>
+                        <button class="btn btn-primary" id="increaseSpeedBtn">🚀 Faster</button>
+                        <button class="btn btn-secondary" id="resetSpeedBtn">🔄 Reset</button>
+                    </div>
+                </div>
+                
+                <div class="controls-section" style="margin-top: 10px; padding: 10px; border: 1px solid #0080ff; border-radius: 8px;">
+                    <div style="text-align: center; color: #66aaff; font-weight: bold; margin-bottom: 10px;">🔧 Exploration Controls</div>
+                    <div class="controls-row">
+                        <button class="btn btn-primary" id="explorationHighBtn">🔍 High (80%)</button>
+                        <button class="btn btn-smart" id="explorationMediumBtn">⚖️ Medium (50%)</button>
+                        <button class="btn btn-danger" id="explorationLowBtn">🎯 Low (20%)</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="learning-tip">
+                🎳 <strong>AGENT BYTE v1.2 KNOWLEDGE SYSTEM ENHANCED:</strong> Now with intelligent strategy application! Agent Byte analyzes game situations and applies appropriate strategies based on environmental context. Watch as it learns to think strategically, not just react!
+            </div>
+            
+            <div class="user-demo-tip">
+                🎓 <strong>USER DEMO LEARNING:</strong> Every time you successfully hit the ball or make good positioning moves, Agent Byte records and learns from your actions. The better you play, the smarter Agent Byte becomes! Use the controls above to customize how much it learns from you.
+            </div>
+            
+            <div class="knowledge-tip">
+                🧩 <strong>KNOWLEDGE SYSTEM:</strong> Agent Byte now understands game situations and applies contextual strategies! Watch for 🧩 symbolic decisions in the console and see how knowledge effectiveness improves over time. The AI combines neural learning with symbolic reasoning for intelligent gameplay.
+            </div>
+            
+            <div class="reward-explanation">
+                <strong>v1.2 Knowledge System Enhanced Reward System:</strong><br>
+                Task Success (Hit): +1.0 + streak*0.25 • Task Failure (Miss): -0.5<br>
+                Task Completion (Goal): +3.0 • Major Failure (Concede): -0.5<br>
+                🎳 HIT-TO-SCORE BONUS: Score after hitting = +1.0 extra!<br>
+                🎓 USER DEMO LEARNING: Your successful moves mixed into AI training<br>
+                🧩 KNOWLEDGE SYSTEM: Intelligent strategy selection based on game context<br>
+                🏆 Match Win: +10.0 • Match Loss: -10.0<br>
+                🧠 Dueling Networks: Separate value and advantage estimation<br>
+                🎯 Double DQN: Reduced overestimation bias<br>
+                👤 Demo Integration: Quality-based selection and weighted learning<br>
+                📊 Strategy Performance: Tracks effectiveness of different knowledge types
+            </div>
+            
+            <div id="status" class="status disconnected">Connecting to Agent Byte v1.2 Knowledge System Enhanced...</div>
+        </div>
+    </div>
+
+    <script>
+        // Load historical data from Flask on page load
+        const historicalData = {}; // Empty object for now
+        
+        function loadHistoricalData() {
+            if (historicalData && Object.keys(historicalData).length > 0) {
+                console.log('📊 Loading historical data:', historicalData);
+                
+                // Update lifetime stats
+                if (historicalData.lifetime_hits !== undefined) {
+                    document.getElementById('lifetimeHits').textContent = historicalData.lifetime_hits;
+                }
+                if (historicalData.lifetime_misses !== undefined) {
+                    document.getElementById('lifetimeMisses').textContent = historicalData.lifetime_misses;
+                }
+                if (historicalData.lifetime_hit_rate !== undefined) {
+                    document.getElementById('lifetimeHitRate').textContent = historicalData.lifetime_hit_rate.toFixed(1) + '%';
+                }
+                if (historicalData.lifetime_max_hit_streak !== undefined) {
+                    document.getElementById('lifetimeMaxHitStreak').textContent = historicalData.lifetime_max_hit_streak;
+                }
+                if (historicalData.lifetime_max_miss_streak !== undefined) {
+                    document.getElementById('lifetimeMaxMissStreak').textContent = historicalData.lifetime_max_miss_streak;
+                }
+                if (historicalData.lifetime_games !== undefined) {
+                    document.getElementById('gamesPlayed').textContent = historicalData.lifetime_games;
+                }
+                
+                // Update recent performance if available
+                if (historicalData.recent_matches_count && historicalData.recent_matches_count > 0) {
+                    const recentSection = document.getElementById('recentPerformanceSection');
+                    recentSection.style.display = 'block';
+                    
+                    document.getElementById('recentWinRate').textContent = (historicalData.recent_win_rate || 0).toFixed(1) + '%';
+                    document.getElementById('recentHitRate').textContent = (historicalData.recent_hit_rate || 0).toFixed(1) + '%';
+                    document.getElementById('recentAvgReward').textContent = (historicalData.recent_avg_reward || 0).toFixed(1);
+                    
+                    // Hit-to-score bonus in recent performance
+                    if (historicalData.recent_hit_bonuses !== undefined) {
+                        document.getElementById('recentHitBonuses').textContent = (historicalData.recent_hit_bonuses || 0).toFixed(1);
+                    }
+                    
+                    // User demos in recent performance
+                    if (historicalData.recent_user_demos !== undefined) {
+                        document.getElementById('recentUserDemos').textContent = (historicalData.recent_user_demos || 0).toFixed(1);
+                    }
+                    
+                    // Knowledge decisions in recent performance
+                    if (historicalData.recent_knowledge_decisions !== undefined) {
+                        document.getElementById('recentKnowledgeDecisions').textContent = (historicalData.recent_knowledge_decisions || 0).toFixed(1);
+                    }
+                }
+                
+                console.log('✅ Historical data loaded successfully');
+            } else {
+                console.log('📂 No historical data available yet');
+            }
+        }
+        
+        // Load historical data when page loads
+        document.addEventListener('DOMContentLoaded', loadHistoricalData);
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const socket = io();
+        
+        let gameState = null;
+        let isConnected = false;
+        
+        // MISSING DRAWING FUNCTIONS - THIS IS THE FIX!
+        function drawGame() {
+            if (!gameState) return;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw center line
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw ball
+            if (gameState.ball) {
+                ctx.fillStyle = '#ff6666';
+                ctx.beginPath();
+                ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Ball glow effect
+                ctx.shadowColor = '#ff6666';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+            
+            // Draw player paddle (left side)
+            if (gameState.player_paddle) {
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(10, gameState.player_paddle.y, 10, gameState.player_paddle.height);
+                
+                // Player paddle glow
+                ctx.shadowColor = '#00ff00';
+                ctx.shadowBlur = 5;
+                ctx.fillRect(10, gameState.player_paddle.y, 10, gameState.player_paddle.height);
+                ctx.shadowBlur = 0;
+            }
+            
+            // Draw AI paddle (right side)
+            if (gameState.ai_paddle) {
+                ctx.fillStyle = '#ff4444';
+                ctx.fillRect(canvas.width - 20, gameState.ai_paddle.y, 10, gameState.ai_paddle.height);
+                
+                // AI paddle glow
+                ctx.shadowColor = '#ff4444';
+                ctx.shadowBlur = 5;
+                ctx.fillRect(canvas.width - 20, gameState.ai_paddle.y, 10, gameState.ai_paddle.height);
+                ctx.shadowBlur = 0;
+            }
+            
+            // Draw game over message
+            if (gameState.game_over && gameState.winner) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = gameState.winner === 'Agent Byte' ? '#ff4444' : '#00ff00';
+                ctx.font = 'bold 48px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText(
+                    gameState.winner === 'Agent Byte' ? 'AGENT BYTE WINS!' : 'YOU WIN!',
+                    canvas.width / 2,
+                    canvas.height / 2
+                );
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = '24px Courier New';
+                ctx.fillText('Click "New Game" to play again', canvas.width / 2, canvas.height / 2 + 50);
+            }
+        }
+        
+        function updateScores() {
+            if (!gameState || !gameState.scores) return;
+            
+            document.getElementById('playerScore').textContent = gameState.scores.player;
+            document.getElementById('aiScore').textContent = gameState.scores.ai;
+            document.getElementById('winningScore').textContent = gameState.scores.winning_score;
+        }
+        
+        // UI elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const upBtn = document.getElementById('upBtn');
+        const downBtn = document.getElementById('downBtn');
+        const saveBrainBtn = document.getElementById('saveBrainBtn');
+        const checkpointBtn = document.getElementById('checkpointBtn');
+        const smartResetBtn = document.getElementById('smartResetBtn');
+        const clearExperiencesBtn = document.getElementById('clearExperiencesBtn');
+        
+        // User Demo Learning Controls
+        const toggleDemoLearningBtn = document.getElementById('toggleDemoLearningBtn');
+        const toggleDemoRecordingBtn = document.getElementById('toggleDemoRecordingBtn');
+        const clearDemosBtn = document.getElementById('clearDemosBtn');
+        const getDemoStatsBtn = document.getElementById('getDemoStatsBtn');
+        const demoWeightSlider = document.getElementById('demoWeightSlider');
+        const demoRatioSlider = document.getElementById('demoRatioSlider');
+        const demoWeightValue = document.getElementById('demoWeightValue');
+        const demoRatioValue = document.getElementById('demoRatioValue');
+        
+        // NEW: Knowledge System Controls
+        const toggleKnowledgeSystemBtn = document.getElementById('toggleKnowledgeSystemBtn');
+        const getKnowledgeAnalysisBtn = document.getElementById('getKnowledgeAnalysisBtn');
+        const getStrategyPerformanceBtn = document.getElementById('getStrategyPerformanceBtn');
+        
+        // Control buttons
+        const increaseSpeedBtn = document.getElementById('increaseSpeedBtn');
+        const decreaseSpeedBtn = document.getElementById('decreaseSpeedBtn');
+        const resetSpeedBtn = document.getElementById('resetSpeedBtn');
+        const currentSpeed = document.getElementById('currentSpeed');
+        const explorationHighBtn = document.getElementById('explorationHighBtn');
+        const explorationMediumBtn = document.getElementById('explorationMediumBtn');
+        const explorationLowBtn = document.getElementById('explorationLowBtn');
+        const status = document.getElementById('status');
+        const playerScore = document.getElementById('playerScore');
+        const aiScore = document.getElementById('aiScore');
+        const winningScore = document.getElementById('winningScore');
+        
+        // AI stats
+        const gamesPlayed = document.getElementById('gamesPlayed');
+        const agentWins = document.getElementById('agentWins');
+        const winRate = document.getElementById('winRate');
+        const trainingSteps = document.getElementById('trainingSteps');
+        const targetUpdates = document.getElementById('targetUpdates');
+        const doubleDqnBenefits = document.getElementById('doubleDqnBenefits');
+        const aiPointsScored = document.getElementById('aiPointsScored');
+        const aiPointsAllowed = document.getElementById('aiPointsAllowed');
+        const networkParams = document.getElementById('networkParams');
+        const experienceBuffer = document.getElementById('experienceBuffer');
+        const userDemoBuffer = document.getElementById('userDemoBuffer');
+        const learningPhase = document.getElementById('learningPhase');
+        const explorationFill = document.getElementById('explorationFill');
+        const explorationText = document.getElementById('explorationText');
+        const lossFill = document.getElementById('lossFill');
+        const lossText = document.getElementById('lossText');
+        
+        // Current streak stats
+        const currentHitStreak = document.getElementById('currentHitStreak');
+        const currentMissStreak = document.getElementById('currentMissStreak');
+        const totalHitBonus = document.getElementById('totalHitBonus');
+        const totalMissPenalty = document.getElementById('totalMissPenalty');
+        
+        // Hit-to-score bonus elements
+        const matchHitBonuses = document.getElementById('matchHitBonuses');
+        const lifetimeHitBonuses = document.getElementById('lifetimeHitBonuses');
+        const totalBonusReward = document.getElementById('totalBonusReward');
+        const bonusSuccessRate = document.getElementById('bonusSuccessRate');
+        
+        // Symbolic tracking elements
+        const taskSuccesses = document.getElementById('taskSuccesses');
+        const taskFailures = document.getElementById('taskFailures');
+        const taskSuccessRate = document.getElementById('taskSuccessRate');
+        const taskCompletions = document.getElementById('taskCompletions');
+        const successStreak = document.getElementById('successStreak');
+        const bestSuccessStreak = document.getElementById('bestSuccessStreak');
+        
+        // Round tracking elements
+        const currentMatchReward = document.getElementById('currentMatchReward');
+        const roundHits = document.getElementById('roundHits');
+        const roundMisses = document.getElementById('roundMisses');
+        const roundHitRate = document.getElementById('roundHitRate');
+        const roundBestHitStreak = document.getElementById('roundBestHitStreak');
+        const roundHitToScoreBonuses = document.getElementById('roundHitToScoreBonuses');
+        const roundUserDemos = document.getElementById('roundUserDemos');
+        const roundKnowledgeDecisions = document.getElementById('roundKnowledgeDecisions');
+        
+        // User performance elements
+        const userHits = document.getElementById('userHits');
+        const userMisses = document.getElementById('userMisses');
+        const userHitRate = document.getElementById('userHitRate');
+        const userDefenses = document.getElementById('userDefenses');
+        const userActionsRecorded = document.getElementById('userActionsRecorded');
+        
+        // Demo learning status elements
+        const demoLearningStatus = document.getElementById('demoLearningStatus');
+        const demoRecordingStatus = document.getElementById('demoRecordingStatus');
+        const demoEffectivenessFill = document.getElementById('demoEffectivenessFill');
+        const demoEffectivenessText = document.getElementById('demoEffectivenessText');
+        const demosAvailable = document.getElementById('demosAvailable');
+        const demosThisMatch = document.getElementById('demosThisMatch');
+        const demosUsed = document.getElementById('demosUsed');
+        const demoBufferUsage = document.getElementById('demoBufferUsage');
+        
+        // NEW: Knowledge System elements
+        const knowledgeSystemStatus = document.getElementById('knowledgeSystemStatus');
+        const knowledgeEffectivenessFill = document.getElementById('knowledgeEffectivenessFill');
+        const knowledgeEffectivenessText = document.getElementById('knowledgeEffectivenessText');
+        const strategiesAvailable = document.getElementById('strategiesAvailable');
+        const knowledgeStrategiesCount = document.getElementById('knowledgeStrategiesCount');
+        const knowledgeLessonsCount = document.getElementById('knowledgeLessonsCount');
+        const knowledgeLessonsThisMatch = document.getElementById('knowledgeLessonsThisMatch');
+        const knowledgeStrategiesDiscovered = document.getElementById('knowledgeStrategiesDiscovered');
+        const symbolicDecisions = document.getElementById('symbolicDecisions');
+        const neuralDecisions = document.getElementById('neuralDecisions');
+        const intelligenceRatio = document.getElementById('intelligenceRatio');
+        
+        // Lifetime tracking elements
+        const lifetimeHitRate = document.getElementById('lifetimeHitRate');
+        const lifetimeHits = document.getElementById('lifetimeHits');
+        const lifetimeMisses = document.getElementById('lifetimeMisses');
+        const lifetimeMaxHitStreak = document.getElementById('lifetimeMaxHitStreak');
+        const lifetimeMaxMissStreak = document.getElementById('lifetimeMaxMissStreak');
+        
+        // Recent performance elements
+        const recentPerformanceSection = document.getElementById('recentPerformanceSection');
+        const recentWinRate = document.getElementById('recentWinRate');
+        const recentHitRate = document.getElementById('recentHitRate');
+        const recentAvgReward = document.getElementById('recentAvgReward');
+        const recentHitBonuses = document.getElementById('recentHitBonuses');
+        const recentUserDemos = document.getElementById('recentUserDemos');
+        const recentKnowledgeDecisions = document.getElementById('recentKnowledgeDecisions');
+        
+        // Socket events
+        socket.on('connect', () => {
+            isConnected = true;
+            status.textContent = '🤖 Connected - Agent Byte v1.2 Knowledge System Enhanced Ready!';
+            status.className = 'status connected';
+        });
+        
+        socket.on('disconnect', () => {
+            isConnected = false;
+            status.textContent = 'Disconnected from Agent Byte v1.2 Knowledge System Enhanced';
+            status.className = 'status disconnected';
+        });
+        
+        socket.on('game_update', (data) => {
+            gameState = data;
+            drawGame();
+            updateScores();
+            updateEnhancedAIStats(data.ai_stats);
+            
+            if (data.game_over && data.winner) {
+                if (data.winner === "Agent Byte") {
+                    status.textContent = `🏆 Agent Byte wins! Knowledge system working effectively...`;
+                } else {
+                    status.textContent = `🎉 You Win! Agent Byte learning from your gameplay and strategic thinking...`;
+                }
+                status.className = 'status connected';
+            }
+        });
+        
+        socket.on('game_started', () => {
+            status.textContent = '🎮 Game Started - Knowledge System Active + Enhanced v1.2 Training!';
+        });
+        
+        socket.on('game_stopped', () => {
+            status.textContent = 'Game Stopped - Knowledge System + Enhanced Network Paused';
+        });
+        
+        socket.on('new_game_started', () => {
+            status.textContent = '🆕 New Game - Knowledge System + Enhanced v1.2 continues!';
+        });
+        
+        socket.on('ai_brain_saved', (data) => {
+            status.textContent = data.message;
+        });
+        
+        socket.on('ai_checkpoint_created', (data) => {
+            status.textContent = data.message;
+        });
+        
+        socket.on('ai_smart_reset', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#ffaa00';
+        });
+        
+        socket.on('exploration_reset', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#ffff00';
+        });
+        
+        socket.on('experiences_cleared', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#ff8800';
+        });
+        
+        socket.on('ball_speed_changed', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#ffaa00';
+            if (currentSpeed) {
+                currentSpeed.textContent = `Speed: ${data.speed}`;
+            }
+        });
+        
+        socket.on('exploration_changed', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#66aaff';
+        });
+        
+        // User Demo Learning Socket Events
+        socket.on('demo_learning_toggled', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#66aaff';
+            updateDemoLearningStatus(data.enabled);
+        });
+        
+        socket.on('demo_recording_toggled', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#66aaff';
+            updateDemoRecordingStatus(data.active);
+        });
+        
+        socket.on('demo_params_changed', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#66aaff';
+            updateDemoParameters(data.params);
+        });
+        
+        socket.on('user_demos_cleared', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#ff8800';
+            updateDemoStats();
+        });
+        
+        socket.on('demo_stats_update', (data) => {
+            updateDemoStatsDisplay(data);
+        });
+        
+        // NEW: Knowledge System Socket Events
+        socket.on('knowledge_system_toggled', (data) => {
+            status.textContent = data.message;
+            status.style.color = '#8866ff';
+            updateKnowledgeSystemStatus(data.enabled);
+        });
+        
+        socket.on('knowledge_analysis_update', (data) => {
+            console.log('🧩 Knowledge Analysis:', data.analysis);
+            status.textContent = data.message;
+            status.style.color = '#8866ff';
+        });
+        
+        socket.on('strategy_performance_update', (data) => {
+            console.log('🎯 Strategy Performance:', data.performance);
+            status.textContent = data.message;
+            status.style.color = '#8866ff';
+        });
+        
+        // Controls
+        startBtn.addEventListener('click', () => socket.emit('start_game'));
+        stopBtn.addEventListener('click', () => socket.emit('stop_game'));
+        newGameBtn.addEventListener('click', () => socket.emit('new_game'));
+        saveBrainBtn.addEventListener('click', () => socket.emit('save_ai_brain'));
+        checkpointBtn.addEventListener('click', () => socket.emit('create_ai_checkpoint'));
+        
+        smartResetBtn.addEventListener('click', () => {
+            if (confirm('Apply Smart Reset? This keeps good patterns but increases exploration.')) {
+                socket.emit('smart_reset_ai');
+            }
+        });
+        
+        clearExperiencesBtn.addEventListener('click', () => {
+            if (confirm('Clear Agent Byte recent bad experiences?')) {
+                socket.emit('clear_bad_experiences');
+            }
+        });
+        
+        // User Demo Learning Controls
+        toggleDemoLearningBtn.addEventListener('click', () => {
+            socket.emit('toggle_demo_learning');
+        });
+        
+        toggleDemoRecordingBtn.addEventListener('click', () => {
+            socket.emit('toggle_demo_recording');
+        });
+        
+        clearDemosBtn.addEventListener('click', () => {
+            if (confirm('Clear all user demonstrations? This cannot be undone.')) {
+                socket.emit('clear_user_demos');
+            }
+        });
+        
+        getDemoStatsBtn.addEventListener('click', () => {
+            socket.emit('get_demo_stats');
+        });
+        
+        // Demo parameter sliders
+        demoWeightSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            demoWeightValue.textContent = value.toFixed(1);
+            socket.emit('adjust_demo_weight', { weight: value });
+        });
+        
+        demoRatioSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            demoRatioValue.textContent = value.toFixed(2);
+            socket.emit('adjust_demo_ratio', { ratio: value });
+        });
+        
+        // NEW: Knowledge System Controls
+        toggleKnowledgeSystemBtn.addEventListener('click', () => {
+            socket.emit('toggle_knowledge_system');
+        });
+        
+        getKnowledgeAnalysisBtn.addEventListener('click', () => {
+            socket.emit('get_knowledge_analysis');
+        });
+        
+        getStrategyPerformanceBtn.addEventListener('click', () => {
+            socket.emit('get_strategy_performance');
+        });
+        
+        // Ball speed controls
+        increaseSpeedBtn.addEventListener('click', () => socket.emit('increase_ball_speed'));
+        decreaseSpeedBtn.addEventListener('click', () => socket.emit('decrease_ball_speed'));
+        resetSpeedBtn.addEventListener('click', () => socket.emit('reset_ball_speed'));
+        
+        // Exploration controls
+        explorationHighBtn.addEventListener('click', () => socket.emit('set_exploration_high'));
+        explorationMediumBtn.addEventListener('click', () => socket.emit('set_exploration_medium'));
+        explorationLowBtn.addEventListener('click', () => socket.emit('set_exploration_low'));
+        
+        // Paddle movement
+        let paddleMoving = 0;
+        
+        function startPaddleMovement(direction) {
+            if (paddleMoving !== direction) {
+                paddleMoving = direction;
+                movePaddle();
+            }
+        }
+        
+        function stopPaddleMovement() {
+            paddleMoving = 0;
+        }
+        
+        function movePaddle() {
+            if (paddleMoving !== 0) {
+                socket.emit('move_paddle', { direction: paddleMoving });
+                setTimeout(movePaddle, 16);
+            }
+        }
+        
+        // Touch controls
+        upBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startPaddleMovement(-1);
+        });
+        upBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopPaddleMovement();
+        });
+        downBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startPaddleMovement(1);
+        });
+        downBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopPaddleMovement();
+        });
+        
+        // Mouse controls
+        upBtn.addEventListener('mousedown', () => startPaddleMovement(-1));
+        upBtn.addEventListener('mouseup', stopPaddleMovement);
+        downBtn.addEventListener('mousedown', () => startPaddleMovement(1));
+        downBtn.addEventListener('mouseup', stopPaddleMovement);
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'w') startPaddleMovement(-1);
+            else if (e.key === 'ArrowDown' || e.key === 's') startPaddleMovement(1);
+        });
+        document.addEventListener('keyup', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'w', 's'].includes(e.key)) stopPaddleMovement();
+        });
+        
+        // Demo Learning UI Update Functions
+        function updateDemoLearningStatus(enabled) {
+            demoLearningStatus.textContent = enabled ? 'ON' : 'OFF';
+            demoLearningStatus.className = enabled ? 'demo-status-value demo-active demo-pulse' : 'demo-status-value demo-inactive';
+            toggleDemoLearningBtn.className = enabled ? 'btn btn-demo-active' : 'btn btn-demo-inactive';
+        }
+        
+        function updateDemoRecordingStatus(active) {
+            demoRecordingStatus.textContent = active ? 'ACTIVE' : 'PAUSED';
+            demoRecordingStatus.className = active ? 'demo-status-value demo-active demo-pulse' : 'demo-status-value demo-inactive';
+            toggleDemoRecordingBtn.className = active ? 'btn btn-demo-active' : 'btn btn-demo-inactive';
+        }
+        
+        function updateDemoParameters(params) {
+            demoWeightSlider.value = params.weight;
+            demoWeightValue.textContent = params.weight.toFixed(1);
+            demoRatioSlider.value = params.ratio;
+            demoRatioValue.textContent = params.ratio.toFixed(2);
+        }
+        
+        function updateDemoStatsDisplay(stats) {
+            demosAvailable.textContent = stats.demo_buffer_size || 0;
+            demosThisMatch.textContent = stats.demos_recorded_this_match || 0;
+            demosUsed.textContent = stats.demos_used_this_match || 0;
+            demoBufferUsage.textContent = `${stats.demo_buffer_size || 0}/1000`;
+            
+            const effectiveness = (stats.demo_effectiveness || 0) * 100;
+            demoEffectivenessFill.style.width = effectiveness + '%';
+            demoEffectivenessText.textContent = effectiveness.toFixed(0) + '%';
+            
+            updateDemoLearningStatus(stats.demo_learning_enabled);
+            updateDemoRecordingStatus(stats.demo_recording_active);
+            updateDemoParameters({
+                weight: stats.demo_learning_weight || 0.3,
+                ratio: stats.demo_replay_ratio || 0.25
+            });
+        }
+        
+        function updateDemoStats() {
+            socket.emit('get_demo_stats');
+        }
+        
+        // NEW: Knowledge System UI Update Functions
+        function updateKnowledgeSystemStatus(enabled) {
+            knowledgeSystemStatus.textContent = enabled ? 'ACTIVE' : 'INACTIVE';
+            knowledgeSystemStatus.className = enabled ? 'knowledge-status-value knowledge-active knowledge-pulse' : 'knowledge-status-value knowledge-inactive';
+            toggleKnowledgeSystemBtn.className = enabled ? 'btn btn-knowledge-active' : 'btn btn-knowledge-inactive';
+        }
+        
+        function updateKnowledgeSystemStats(stats) {
+            // Update knowledge effectiveness
+            const effectiveness = (stats.knowledge_effectiveness || 0) * 100;
+            knowledgeEffectivenessFill.style.width = effectiveness + '%';
+            knowledgeEffectivenessText.textContent = effectiveness.toFixed(0) + '%';
+            
+            // Update strategy and lesson counts
+            strategiesAvailable.textContent = stats.strategies_available || 0;
+            knowledgeStrategiesCount.textContent = stats.strategies_available || 0;
+            knowledgeLessonsCount.textContent = stats.lessons_learned || 0;
+            knowledgeLessonsThisMatch.textContent = stats.lessons_learned_this_match || 0;
+            knowledgeStrategiesDiscovered.textContent = stats.strategies_discovered_this_match || 0;
+            
+            // Update decision counters
+            symbolicDecisions.textContent = stats.symbolic_decisions_made || 0;
+            neuralDecisions.textContent = stats.neural_decisions_made || 0;
+            
+            // Calculate intelligence ratio
+            const totalDecisions = (stats.symbolic_decisions_made || 0) + (stats.neural_decisions_made || 0);
+            const ratio = totalDecisions > 0 ? ((stats.symbolic_decisions_made || 0) / totalDecisions * 100) : 0;
+            intelligenceRatio.textContent = ratio.toFixed(0) + '%';
+            
+            // Update knowledge system status
+            const systemEnabled = stats.knowledge_system_enabled !== undefined ? stats.knowledge_system_enabled : true;
+            updateKnowledgeSystemStatus(systemEnabled);
+        }
+        
+        // Enhanced AI stats update function for v1.2 with Knowledge System
+        function updateEnhancedAIStats(stats) {
+            if (!stats) return;
+            
+            gamesPlayed.textContent = stats.games_played;
+            agentWins.textContent = stats.wins || 0;
+            winRate.textContent = stats.win_rate + '%' || '0%';
+            
+            // Color code win rate
+            const rate = stats.win_rate || 0;
+            if (rate > 50) {
+                winRate.style.color = '#00ff00';
+            } else if (rate > 25) {
+                winRate.style.color = '#ffff00';
+            } else {
+                winRate.style.color = '#ff8800';
+            }
+            
+            trainingSteps.textContent = stats.training_steps || 0;
+            targetUpdates.textContent = stats.target_updates || 0;
+            
+            // Double DQN benefits
+            if (doubleDqnBenefits && stats.double_dqn_improvements !== undefined) {
+                doubleDqnBenefits.textContent = stats.double_dqn_improvements;
+            }
+            
+            aiPointsScored.textContent = stats.points_scored || 0;
+            aiPointsAllowed.textContent = stats.points_allowed || 0;
+            
+            if (stats.network_parameters) {
+                networkParams.textContent = stats.network_parameters.toLocaleString() + ' params';
+            }
+            
+            experienceBuffer.textContent = `${stats.experience_buffer_size}/5000`;
+            
+            // User demo buffer
+            if (userDemoBuffer && stats.user_demo_buffer_size !== undefined) {
+                userDemoBuffer.textContent = `${stats.user_demo_buffer_size}/1000`;
+            }
+            
+            // Exploration bar and phase
+            const explorationPercent = Math.round(stats.exploration_rate * 100);
+            explorationFill.style.width = explorationPercent + '%';
+            explorationText.textContent = explorationPercent + '%';
+            
+            // Learning phase
+            const phase = stats.learning_phase || 'Exploring';
+            learningPhase.textContent = phase;
+            learningPhase.className = 'learning-phase phase-' + phase.toLowerCase();
+            
+            // Update per-round stats
+            if (stats.match_reward !== undefined) {
+                currentMatchReward.textContent = stats.match_reward.toFixed(1);
+                
+                // Color code match reward
+                if (stats.match_reward > 0) {
+                    currentMatchReward.style.color = '#00ff00';
+                } else if (stats.match_reward < 0) {
+                    currentMatchReward.style.color = '#ff4444';
+                } else {
+                    currentMatchReward.style.color = '#ffaa00';
+                }
+            }
+            
+            // Hit-to-Score Bonus Tracking
+            if (matchHitBonuses && stats.hit_to_score_bonuses !== undefined) {
+                matchHitBonuses.textContent = stats.hit_to_score_bonuses;
+            }
+            
+            if (lifetimeHitBonuses && stats.hit_to_score_bonuses !== undefined) {
+                lifetimeHitBonuses.textContent = stats.hit_to_score_bonuses;
+            }
+            
+            if (totalBonusReward && stats.total_bonus_reward !== undefined) {
+                totalBonusReward.textContent = stats.total_bonus_reward.toFixed(1);
+            }
+            
+            // Calculate bonus success rate
+            if (bonusSuccessRate && stats.task_successes && stats.task_completions) {
+                const bonusRate = stats.task_successes > 0 ? (stats.hit_to_score_bonuses / stats.task_successes * 100) : 0;
+                bonusSuccessRate.textContent = bonusRate.toFixed(1) + '%';
+            }
+            
+            // Symbolic Task Tracking
+            if (taskSuccesses) taskSuccesses.textContent = stats.task_successes || stats.round_hits || 0;
+            if (taskFailures) taskFailures.textContent = stats.task_failures || stats.round_misses || 0;
+            if (taskSuccessRate) taskSuccessRate.textContent = (stats.task_success_rate || stats.round_hit_rate || 0).toFixed(1) + '%';
+            if (taskCompletions) taskCompletions.textContent = stats.task_completions || stats.points_scored || 0;
+            if (successStreak) successStreak.textContent = stats.success_streak_current || stats.consecutive_hits || 0;
+            if (bestSuccessStreak) bestSuccessStreak.textContent = stats.success_streak_best || stats.round_best_hit_streak || 0;
+            
+            // Round tracking updates
+            if (roundHits) roundHits.textContent = stats.round_hits || stats.task_successes || 0;
+            if (roundMisses) roundMisses.textContent = stats.round_misses || stats.task_failures || 0;
+            if (roundHitRate) roundHitRate.textContent = (stats.round_hit_rate || stats.task_success_rate || 0).toFixed(1) + '%';
+            if (roundBestHitStreak) roundBestHitStreak.textContent = stats.round_best_hit_streak || stats.success_streak_best || 0;
+            if (roundHitToScoreBonuses) roundHitToScoreBonuses.textContent = stats.hit_to_score_bonuses || 0;
+            if (roundUserDemos) roundUserDemos.textContent = stats.user_demos_recorded_this_match || 0;
+            if (roundKnowledgeDecisions) roundKnowledgeDecisions.textContent = stats.symbolic_decisions_made || 0;
+            
+            // User performance updates
+            if (userHits) userHits.textContent = stats.user_hits || 0;
+            if (userMisses) userMisses.textContent = stats.user_misses || 0;
+            if (userHitRate) userHitRate.textContent = (stats.user_hit_rate || 0).toFixed(1) + '%';
+            if (userDefenses) userDefenses.textContent = stats.user_successful_defenses || 0;
+            if (userActionsRecorded) userActionsRecorded.textContent = stats.user_actions_recorded || 0;
+            
+            // Current streak updates
+            if (currentHitStreak) currentHitStreak.textContent = stats.consecutive_hits || stats.success_streak_current || 0;
+            if (currentMissStreak) currentMissStreak.textContent = stats.consecutive_misses || 0;
+            
+            // Bonus and penalty totals
+            if (totalHitBonus) totalHitBonus.textContent = stats.total_hit_bonus || stats.total_success_bonus || 0;
+            if (totalMissPenalty) totalMissPenalty.textContent = stats.total_miss_penalty || stats.total_failure_penalty || 0;
+            
+            // Loss indicator
+            if (stats.avg_loss !== undefined) {
+                const lossPercent = Math.min(100, stats.avg_loss * 10000); // Scale for visibility
+                lossFill.style.width = lossPercent + '%';
+                lossText.textContent = stats.avg_loss.toFixed(4);
+            }
+            
+            // Update demo learning stats if available
+            if (stats.demo_learning_enabled !== undefined) {
+                updateDemoStatsDisplay({
+                    demo_buffer_size: stats.user_demo_buffer_size || 0,
+                    demos_recorded_this_match: stats.user_demos_recorded || 0,
+                    demos_used_this_match: stats.user_demos_processed || 0,
+                    demo_effectiveness: stats.demo_learning_effectiveness || 0,
+                    demo_learning_enabled: stats.demo_learning_enabled,
+                    demo_recording_active: stats.demo_recording_active,
+                    demo_learning_weight: stats.demo_learning_weight || 0.3,
+                    demo_replay_ratio: stats.demo_replay_ratio || 0.25
+                });
+            }
+            
+            // NEW: Update knowledge system stats
+            updateKnowledgeSystemStats(stats);
+            
+            // Update recent performance section if available
+            if (stats.recent_performance) {
+                const recent = stats.recent_performance;
+                recentPerformanceSection.style.display = 'block';
+                
+                if (recentWinRate) recentWinRate.textContent = (recent.recent_win_rate || 0).toFixed(1) + '%';
+                if (recentHitRate) recentHitRate.textContent = (recent.recent_hit_rate || 0).toFixed(1) + '%';
+                if (recentAvgReward) recentAvgReward.textContent = (recent.avg_reward_per_match || 0).toFixed(1);
+                if (recentHitBonuses) recentHitBonuses.textContent = (recent.avg_hit_bonuses_per_match || 0).toFixed(1);
+                if (recentUserDemos) recentUserDemos.textContent = (recent.avg_user_demos_per_match || 0).toFixed(1);
+                if (recentKnowledgeDecisions) recentKnowledgeDecisions.textContent = (recent.avg_symbolic_decisions_per_match || 0).toFixed(1);
+            }
+        }
+    </script>
+</body>
+  </html>
