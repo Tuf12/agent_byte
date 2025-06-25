@@ -1,11 +1,11 @@
-# pong_environment.py - Enhanced with Environment-Specific Gamma Support
+# pong_environment.py - Enhanced with Symbolic Interpretation Methods
 import numpy as np
 import random
 import time
 
 class PongEnvironment:
-    """Symbolic Pong Environment - Enhanced with Environment-Specific Learning Parameters"""
-    """Enhanced with center-zero coordinate system"""
+    """Symbolic Pong Environment - Enhanced with Environment-Specific Learning Parameters and Symbolic Interpretation"""
+    """Enhanced with center-zero coordinate system and modular symbolic interpretation"""
     
     def __init__(self, width=800, height=400):
         print("🏓 Initializing Enhanced Symbolic Pong Environment with Adaptive Learning Parameters...")
@@ -94,7 +94,172 @@ class PongEnvironment:
         print(f"   Recommended Exploration: {self.recommended_exploration_start} → {self.recommended_min_exploration}")
         print("🧠 Symbolic Mapping: hit→success, miss→failure, score→completion")
 
-    # [Keep all existing methods: reset_game, create_state, etc. - unchanged]
+    # NEW: Symbolic Interpretation Methods for Agent Byte Integration
+    
+    def interpret_reward(self, reward):
+        """Return a symbolic interpretation of the reward for Pong environment"""
+        if reward >= 10.0:
+            return "Match victory - ultimate success"
+        elif reward <= -10.0:
+            return "Match defeat - ultimate failure"
+        elif reward >= 4.0:
+            return "Scored after hit - perfect combo execution"
+        elif reward >= 3.0:
+            return "Goal scored - task completion achieved"
+        elif reward >= 1.5:
+            return "Successful hit with streak bonus - building momentum"
+        elif reward >= 1.0:
+            return "Successful ball hit - task success"
+        elif reward >= 0.5:
+            return "Minor positive outcome - good positioning"
+        elif reward > 0:
+            return "Small progress - moving in right direction"
+        elif reward == 0:
+            return "Neutral action - no immediate impact"
+        elif reward >= -0.5:
+            return "Minor setback - missed opportunity"
+        elif reward >= -3.0:
+            return "Task failure - missed ball or poor positioning"
+        elif reward >= -5.0:
+            return "Significant failure - opponent scored"
+        else:
+            return "Major failure - critical mistake"
+    
+    def generate_lesson_from_reward(self, reward, context=None):
+        """Generate a learning lesson string from a reward in Pong context"""
+        meaning = self.interpret_reward(reward)
+        
+        # Add context-specific insights for Pong
+        if reward >= 4.0:
+            return f"Hit-to-score combo achieved with reward {reward:.1f} - timing and positioning critical for Pong success"
+        elif reward >= 3.0:
+            return f"Goal scored (reward {reward:.1f}) - successful Pong strategy worth repeating"
+        elif reward >= 1.5:
+            return f"Streak building in Pong (reward {reward:.1f}) - consistency is key to momentum"
+        elif reward >= 1.0:
+            return f"Successful ball interception (reward {reward:.1f}) - core Pong skill demonstrated"
+        elif reward <= -5.0:
+            return f"Poor Pong performance ({reward:.1f}) - defensive positioning needs improvement"
+        elif reward < 0:
+            return f"Pong mistake made ({reward:.1f}) - avoid similar action patterns in future rallies"
+        else:
+            return f"Pong lesson learned: {meaning} (reward={reward:.1f})"
+    
+    def generate_strategy_from_performance(self, wins, games_played, avg_reward):
+        """Generate strategic insights from performance data specific to Pong"""
+        win_rate = (wins / max(1, games_played)) * 100
+        
+        if win_rate > 70 and avg_reward > 5:
+            return "Master Pong strategy: Aggressive hit-to-score combinations with strong defensive positioning"
+        elif win_rate > 50 and avg_reward > 2:
+            return "Effective Pong approach: Consistent ball interception with occasional scoring opportunities"
+        elif win_rate > 30:
+            return "Developing Pong competency: Focus on basic ball tracking and paddle positioning"
+        else:
+            return "Fundamental Pong learning needed: Improve reaction timing and ball trajectory prediction"
+    
+    def get_task_success_description(self):
+        """Return environment-specific description of what constitutes task success"""
+        return "Successfully intercepting the ball with paddle contact in Pong"
+    
+    def get_task_failure_description(self):
+        """Return environment-specific description of what constitutes task failure"""
+        return "Missing the ball when it approaches the AI paddle in Pong"
+    
+    def get_task_completion_description(self):
+        """Return environment-specific description of what constitutes task completion"""
+        return "Scoring a goal by getting the ball past the opponent's paddle in Pong"
+    
+    def get_major_failure_description(self):
+        """Return environment-specific description of what constitutes major failure"""
+        return "Allowing the opponent to score a goal in Pong"
+    
+    def format_user_demo_outcome(self, outcome_type, reward):
+        """Format user demonstration outcome for Pong-specific context"""
+        if outcome_type == "hit":
+            return f"User demonstrated successful Pong ball interception (reward: {reward:.2f})"
+        elif outcome_type == "miss":
+            return f"User missed ball in Pong (reward: {reward:.2f}) - learning opportunity"
+        elif outcome_type == "positioning":
+            return f"User showed Pong paddle positioning technique (reward: {reward:.2f})"
+        else:
+            return f"User Pong demonstration: {outcome_type} (reward: {reward:.2f})"
+    
+    def get_performance_feedback_phrase(self, performance_metric, value):
+        """Get Pong-specific performance feedback phrases"""
+        if performance_metric == "hit_rate":
+            if value > 80:
+                return "Excellent Pong ball interception skills!"
+            elif value > 60:
+                return "Good Pong hitting consistency"
+            elif value > 40:
+                return "Developing Pong accuracy"
+            else:
+                return "Pong hitting needs improvement"
+        
+        elif performance_metric == "win_rate":
+            if value > 70:
+                return "Dominating Pong performance!"
+            elif value > 50:
+                return "Competitive Pong player"
+            elif value > 30:
+                return "Learning Pong fundamentals"
+            else:
+                return "Pong beginner level"
+        
+        elif performance_metric == "streak":
+            if value > 10:
+                return "Amazing Pong streak! Unstoppable!"
+            elif value > 5:
+                return "Great Pong momentum building"
+            elif value > 2:
+                return "Decent Pong consistency"
+            else:
+                return "Working on Pong reliability"
+        
+        return f"Pong {performance_metric}: {value}"
+    
+    def get_environment_specific_constants(self):
+        """Return Pong-specific constants that Agent Byte might need"""
+        return {
+            "hit_to_score_bonus_threshold": 3.5,
+            "high_reward_threshold": 5.0,
+            "low_reward_threshold": -3.0,
+            "streak_bonus_multiplier": 0.25,
+            "task_success_base_reward": 1.0,
+            "task_failure_base_penalty": -0.5,
+            "task_completion_bonus": 3.0,
+            "major_failure_penalty": -0.5,
+            "match_win_bonus": 10.0,
+            "match_loss_penalty": -10.0,
+            "demo_success_reward": 1.5,
+            "demo_failure_penalty": -0.5,
+            "positioning_reward": 0.1
+        }
+    
+    def should_generate_lesson(self, reward, context=None):
+        """Determine if a lesson should be generated from this reward in Pong context"""
+        constants = self.get_environment_specific_constants()
+        
+        # Generate lessons for significant events
+        return (
+            reward >= constants["hit_to_score_bonus_threshold"] or  # Hit-to-score combo
+            reward >= constants["high_reward_threshold"] or         # High performance
+            reward <= constants["low_reward_threshold"] or          # Poor performance
+            abs(reward) >= constants["task_completion_bonus"]       # Major events
+        )
+    
+    def should_generate_strategy(self, reward, context=None):
+        """Determine if a strategy should be generated from this reward in Pong context"""
+        constants = self.get_environment_specific_constants()
+        
+        # Generate strategies for excellent performance or major wins
+        return (
+            reward >= constants["match_win_bonus"] or               # Match victory
+            reward >= constants["hit_to_score_bonus_threshold"]     # Excellent combo
+        )
+
+    # [Keep all existing methods unchanged - reset_game, create_state, step, etc.]
     
     def reset_game(self):
         """Reset game for new match with symbolic state reset"""
@@ -205,7 +370,7 @@ class PongEnvironment:
             "environment_type": "competitive_game",
             "name": "pong",
             "display_name": "Classic Pong",
-            "version": "Enhanced Symbolic v1.2 - Adaptive Learning Parameters",
+            "version": "Enhanced Symbolic v1.2 - Adaptive Learning Parameters + Modular Interpretation",
             
             # Core game understanding
             "objective": {
@@ -238,6 +403,18 @@ class PongEnvironment:
                     "dynamics": "Deterministic physics with reactive opponent",
                     "learning_challenge": "Timing and prediction under pressure"
                 }
+            },
+            
+            # NEW: Symbolic interpretation configuration
+            "symbolic_interpretation": {
+                "task_success_name": "ball_hit",
+                "task_failure_name": "ball_miss", 
+                "task_completion_name": "goal_scored",
+                "major_failure_name": "goal_conceded",
+                "reward_thresholds": self.get_environment_specific_constants(),
+                "lesson_generation_enabled": True,
+                "strategy_generation_enabled": True,
+                "performance_feedback_enabled": True
             },
             
             # Game mechanics and rules
@@ -416,10 +593,10 @@ class PongEnvironment:
             # Integration metadata
             "context_metadata": {
                 "generated_at": time.time(),
-                "environment_version": "Enhanced Symbolic v1.2 - Adaptive Learning Parameters",
-                "context_version": "1.2.1",
+                "environment_version": "Enhanced Symbolic v1.2 - Adaptive Learning Parameters + Modular Interpretation",
+                "context_version": "1.2.2",
                 "last_updated": time.strftime('%Y-%m-%d %H:%M:%S'),
-                "compatible_agents": ["Agent Byte v1.2", "Knowledge System Enhanced", "Dual Brain Architecture"],
+                "compatible_agents": ["Agent Byte v1.2", "Knowledge System Enhanced", "Dual Brain Architecture", "Modular AI Agent"],
                 "environment_complexity": "Medium - Simple physics, complex strategy",
                 "knowledge_system_features": [
                     "Comprehensive situation analysis",
@@ -427,12 +604,17 @@ class PongEnvironment:
                     "Failure pattern avoidance",
                     "Performance-based optimization"
                 ],
-                # NEW: Environment-specific learning parameter metadata
                 "adaptive_learning_features": [
                     "Environment-specific gamma recommendation",
                     "Temporal characteristic analysis", 
                     "Reward-structure-aligned learning rates",
                     "Context-aware exploration strategies"
+                ],
+                "modular_features": [
+                    "Environment-specific symbolic interpretation",
+                    "Configurable reward thresholds",
+                    "Pluggable lesson and strategy generation",
+                    "Standardized Agent Byte integration interface"
                 ],
                 "default_gamma": self.recommended_gamma,
                 "gamma_category": "short_term_feedback",
@@ -447,7 +629,8 @@ class PongEnvironment:
         
         return context
 
-    # [Keep all other existing methods unchanged - step, record_user_action, etc.]
+    # [Keep all other existing methods unchanged - step, move_player_paddle, etc.]
+    
     
     def step(self, agent_action):
         """Execute one game step with symbolic reward tracking"""
@@ -554,7 +737,6 @@ class PongEnvironment:
         next_state = self.create_state()
         
         return next_state, step_reward, game_ended
-
     def process_task_success(self):
         """Agent successfully intercepted ball - symbolic task success"""
         self.task_successes += 1
@@ -891,7 +1073,7 @@ class PongEnvironment:
             # Symbolic metadata
             'symbolic_actions': symbolic_actions,
             'symbolic_outcomes': symbolic_outcomes,
-            'reward_paradigm': 'Symbolic Task-Based Learning + Hit-to-Score Bonus + User Demo Learning + Knowledge System Enhanced + Adaptive Learning Parameters',
+            'reward_paradigm': 'Modular Symbolic Task-Based Learning + Hit-to-Score Bonus + User Demo Learning + Knowledge System Enhanced + Adaptive Learning Parameters',
             'task_mapping': {
                 'hit_ball': 'task_success',
                 'miss_ball': 'task_failure', 
@@ -903,46 +1085,99 @@ class PongEnvironment:
             },
             'knowledge_system_compatible': True,
             'adaptive_learning_compatible': True,
-            'environment_version': 'v1.2.1 Adaptive Learning Parameters'
+            'modular_interpretation_compatible': True,
+            'environment_version': 'v1.2.2 Modular Interpretation + Adaptive Learning Parameters'
         }
 
-# Test the enhanced environment
+# Test the enhanced environment with new modular interpretation methods
 if __name__ == "__main__":
-    print("🧪 Testing Enhanced Symbolic Pong Environment with Adaptive Learning Parameters...")
+    print("🧪 Testing Enhanced Symbolic Pong Environment with Modular Interpretation...")
     
     env = PongEnvironment()
     
-    # Test state creation
-    state = env.create_state()
-    player_state = env.create_player_state()
-    print(f"✅ AI State vector shape: {state.shape}")
-    print(f"✅ Player State vector shape: {player_state.shape}")
+    # Test symbolic interpretation methods
+    test_rewards = [15.0, 4.5, 3.0, 1.5, 1.0, 0.5, 0.0, -0.5, -3.0, -5.0, -15.0]
     
-    # Test environmental context with learning parameters
+    print("\n🧩 Testing Symbolic Interpretation Methods:")
+    for reward in test_rewards:
+        interpretation = env.interpret_reward(reward)
+        lesson = env.generate_lesson_from_reward(reward)
+        should_lesson = env.should_generate_lesson(reward)
+        should_strategy = env.should_generate_strategy(reward)
+        
+        print(f"   Reward {reward:+5.1f}: {interpretation}")
+        print(f"   {'✅' if should_lesson else '❌'} Lesson: {'✅' if should_strategy else '❌'} Strategy")
+        if should_lesson:
+            print(f"   📚 Generated: {lesson}")
+        print()
+    
+    # Test performance feedback
+    print("🎯 Testing Performance Feedback:")
+    test_metrics = [
+        ("hit_rate", 85), ("hit_rate", 45), ("win_rate", 75), ("streak", 12)
+    ]
+    for metric, value in test_metrics:
+        feedback = env.get_performance_feedback_phrase(metric, value)
+        print(f"   {metric} {value}: {feedback}")
+    
+    # Test environment-specific constants
+    constants = env.get_environment_specific_constants()
+    print(f"\n⚙️ Environment Constants: {len(constants)} defined")
+    for key, value in list(constants.items())[:5]:
+        print(f"   {key}: {value}")
+    
+    # Test the enhanced environment with new modular interpretation methods
+if __name__ == "__main__":
+    print("🧪 Testing Enhanced Symbolic Pong Environment with Modular Interpretation...")
+    
+    env = PongEnvironment()
+    
+    # Test symbolic interpretation methods
+    test_rewards = [15.0, 4.5, 3.0, 1.5, 1.0, 0.5, 0.0, -0.5, -3.0, -5.0, -15.0]
+    
+    print("\n🧩 Testing Symbolic Interpretation Methods:")
+    for reward in test_rewards:
+        interpretation = env.interpret_reward(reward)
+        lesson = env.generate_lesson_from_reward(reward)
+        should_lesson = env.should_generate_lesson(reward)
+        should_strategy = env.should_generate_strategy(reward)
+        
+        print(f"   Reward {reward:+5.1f}: {interpretation}")
+        print(f"   {'✅' if should_lesson else '❌'} Lesson: {'✅' if should_strategy else '❌'} Strategy")
+        if should_lesson:
+            print(f"   📚 Generated: {lesson}")
+        print()
+    
+    # Test performance feedback
+    print("🎯 Testing Performance Feedback:")
+    test_metrics = [
+        ("hit_rate", 85), ("hit_rate", 45), ("win_rate", 75), ("streak", 12)
+    ]
+    for metric, value in test_metrics:
+        feedback = env.get_performance_feedback_phrase(metric, value)
+        print(f"   {metric} {value}: {feedback}")
+    
+    # Test environment-specific constants
+    constants = env.get_environment_specific_constants()
+    print(f"\n⚙️ Environment Constants: {len(constants)} defined")
+    for key, value in list(constants.items())[:5]:
+        print(f"   {key}: {value}")
+    
+    # Test environmental context with new modular features
     env_context = env.get_env_context()
-    print(f"✅ Environmental context created with {len(env_context)} categories")
-    print(f"✅ Learning parameters included:")
-    learning_params = env_context.get('learning_parameters', {})
-    print(f"   🎯 Recommended Gamma: {learning_params.get('recommended_gamma')}")
-    print(f"   📚 Gamma Rationale: {learning_params.get('gamma_rationale')}")
-    print(f"   ⚙️ Learning Rate: {learning_params.get('recommended_learning_rate')}")
-    print(f"   🔍 Exploration Start: {learning_params.get('recommended_exploration', {}).get('start')}")
+    symbolic_config = env_context.get('symbolic_interpretation', {})
+    print(f"\n🔧 Symbolic Interpretation Config:")
+    print(f"   Task Success: {symbolic_config.get('task_success_name')}")
+    print(f"   Task Failure: {symbolic_config.get('task_failure_name')}")
+    print(f"   Lesson Generation: {symbolic_config.get('lesson_generation_enabled')}")
+    print(f"   Reward Thresholds: {len(symbolic_config.get('reward_thresholds', {}))} defined")
     
-    # Test a few steps
-    for i in range(5):
-        action = random.randint(0, 2)
-        next_state, reward, done = env.step(action)
-        
-        print(f"Step {i}: Action={action}, Reward={reward:.2f}, Done={done}")
-        
-        if done:
-            break
+    # Test modular features metadata
+    modular_features = env_context.get('context_metadata', {}).get('modular_features', [])
+    print(f"\n🧩 Modular Features: {len(modular_features)}")
+    for feature in modular_features:
+        print(f"   ✅ {feature}")
     
-    # Test stats with learning parameters
-    stats = env.get_pong_stats()
-    print(f"✅ Sample stats: {list(stats.keys())[:8]}...")
-    print(f"🎯 Recommended Gamma: {stats['recommended_gamma']}")
-    print(f"📂 Gamma Category: {stats['gamma_category']}")
-    print(f"🧩 Adaptive Learning Compatible: {stats['adaptive_learning_compatible']}")
-    
-    print("🎯 Enhanced Environment with Adaptive Learning Parameters Test Complete!")
+    print("\n🎯 Enhanced Modular Pong Environment Test Complete!")
+    print("✅ All symbolic interpretation methods working correctly!")
+    print("✅ Ready for integration with modular Agent Byte!")
