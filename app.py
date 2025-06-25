@@ -1,4 +1,4 @@
-# app.py - Modular Coordinator with Adaptive Learning + Knowledge System Integration
+# app.py - Modular Coordinator with Enhanced Environment Integration
 import time
 import threading
 import random
@@ -12,19 +12,22 @@ from agent_byte import AgentByte, MatchLogger
 from pong_environment import PongEnvironment
 
 class ModularPongGame:
-    """Modular Pong Game with Adaptive Learning + Knowledge System Integration"""
+    """Modular Pong Game with Enhanced Environment Integration + Adaptive Learning + Knowledge System"""
     
     def __init__(self):
-        print("🎮 Initializing Modular Pong Game with Adaptive Learning + Knowledge System...")
+        print("🎮 Initializing Modular Pong Game with Enhanced Environment Integration...")
         
         # Create environment with user action tracking
         self.env = PongEnvironment()
         
         # Create match logger
-        self.logger = MatchLogger('adaptive_knowledge_enhanced_agent_byte_logs.json')
+        self.logger = MatchLogger('modular_adaptive_knowledge_enhanced_agent_byte_logs.json')
         
-        # Create agent with enhanced adaptive learning + knowledge system
+        # Create agent with enhanced modular + adaptive learning + knowledge system
         self.agent = AgentByte(state_size=14, action_size=3, logger=self.logger)
+        
+        # CRITICAL: Establish modular environment integration
+        self.agent.set_environment(self.env)
         
         # Game control
         self.running = False
@@ -36,7 +39,7 @@ class ModularPongGame:
         # Knowledge system control
         self.knowledge_system_enabled = True
         
-        # NEW: Adaptive learning control
+        # Adaptive learning control
         self.adaptive_learning_enabled = True
         self.adaptive_learning_history = []
         
@@ -45,12 +48,17 @@ class ModularPongGame:
         self.auto_save_interval = 3600
         
         # Try to load existing brain
-        brain_loaded = self.agent.load_brain('adaptive_knowledge_enhanced_agent_byte_v1_2.json')
+        brain_loaded = self.agent.load_brain('modular_adaptive_knowledge_enhanced_agent_byte_v1_2.json')
         if not brain_loaded:
             print("🆕 Starting with fresh Agent Byte brain")
         
         print("✅ Modular Game initialization complete!")
-        print("🎯 ENHANCED: Adaptive Learning + Knowledge System + User Demo Learning integrated")
+        print("🎯 ENHANCED FEATURES:")
+        print("🏗️ MODULAR ENVIRONMENT INTEGRATION:")
+        print(f"   Environment-specific reward interpretation")
+        print(f"   Automatic lesson and strategy generation from environment")
+        print(f"   Environment constants integration for thresholds")
+        print(f"   Symbolic performance feedback from environment context")
         print("🔧 ADAPTIVE LEARNING SYSTEM:")
         print(f"   Environment-specific parameter optimization")
         print(f"   Automatic gamma adaptation based on game characteristics")
@@ -64,15 +72,26 @@ class ModularPongGame:
         print(f"   Demo replay ratio: {self.agent.demo_replay_ratio}")
         print(f"   Demo buffer size: {len(self.agent.user_demo_buffer)}")
         print(f"📊 Match logging: {len(self.logger.all_matches)} previous matches loaded")
+        
+        # Show environment integration status
+        if self.agent.env:
+            print(f"🌟 Environment Integration Active:")
+            print(f"   Environment: {self.agent.env_context.get('name', 'unknown') if self.agent.env_context else 'loading...'}")
+            print(f"   Constants loaded: {len(self.agent.env_constants)}")
+            print(f"   Modular interpretation: {'Available' if hasattr(self.env, 'interpret_reward') else 'Not available'}")
+            print(f"   Environment learning: {'Available' if hasattr(self.env, 'generate_lesson_from_reward') else 'Not available'}")
+            print(f"   Performance feedback: {'Available' if hasattr(self.env, 'get_performance_feedback_phrase') else 'Not available'}")
+        else:
+            print("⚠️ Environment Integration: INACTIVE")
     
     def reset_game(self):
-        """Reset game for new match with adaptive learning + environmental context integration"""
+        """Reset game for new match with enhanced environment integration"""
         self.env.reset_game()
         
         # Get environmental context from the environment
         env_context = self.env.get_env_context()
         
-        # Start new match with environmental context and adaptive learning
+        # Start new match with environmental context and enhanced integration
         self.agent.start_new_match("pong", env_context=env_context)
         
         # Record adaptive learning details for UI
@@ -87,18 +106,19 @@ class ModularPongGame:
             }
             self.adaptive_learning_history.append(adaptation_info)
         
-        print(f"🆕 Game reset with adaptive learning + knowledge system and environmental context loaded")
+        print(f"🆕 Game reset with enhanced modular environment integration")
         print(f"   🎯 Agent Byte now understands: {env_context['objective']['primary']}")
         print(f"   📚 Pre-loaded with {len(env_context.get('strategic_concepts', {}).get('core_skills', []))} core skills")
         print(f"   🔧 Adaptive learning: Gamma={self.agent.gamma:.3f} ({self.agent.gamma_source})")
         print(f"   🧩 Knowledge system: Ready for intelligent decision making")
+        print(f"   🏗️ Environment integration: Active with {len(self.agent.env_constants)} constants")
     
     def update_game(self):
-        """Game update with adaptive learning + knowledge system integration"""
+        """Game update with enhanced modular environment integration"""
         # Get current state
         current_state = self.env.create_state()
         
-        # Get agent action (now with adaptive learning + knowledge system)
+        # Get agent action (now with modular environment integration)
         agent_action = self.agent.get_action(current_state)
         
         # Execute step in environment
@@ -111,18 +131,29 @@ class ModularPongGame:
                 if user_demo:
                     success = self.agent.record_user_demo(user_demo)
                     if success:
-                        print(f"🎓 User demo learned: {user_demo['outcome']} (reward: {user_demo['reward']:.2f})")
+                        # Use environment-specific formatting if available
+                        if hasattr(self.env, 'format_user_demo_outcome'):
+                            demo_description = self.env.format_user_demo_outcome(user_demo['outcome'], user_demo['reward'])
+                            print(f"🎓 {demo_description}")
+                        else:
+                            print(f"🎓 User demo learned: {user_demo['outcome']} (reward: {user_demo['reward']:.2f})")
             except Exception as e:
                 print(f"❌ Error processing user demo: {e}")
         
-        # Agent learns from experience (with adaptive learning + knowledge system effectiveness tracking)
+        # Agent learns from experience (with enhanced modular environment integration)
         self.agent.learn(reward=reward, next_state=next_state, done=game_ended)
         
-        # Game end processing
+        # Game end processing with environment integration
         if game_ended:
             if self.env.winner == "Agent Byte":
                 final_reward = 10.0
                 print(f"🏆 Agent Byte wins! Total wins: {self.agent.wins + 1}/{self.agent.games_played + 1}")
+                
+                # Use environment-specific feedback if available
+                if hasattr(self.env, 'get_performance_feedback_phrase'):
+                    win_rate = ((self.agent.wins + 1) / (self.agent.games_played + 1)) * 100
+                    feedback = self.env.get_performance_feedback_phrase("win_rate", win_rate)
+                    print(f"   🎯 {feedback}")
                 
                 # Balanced learning iterations
                 for _ in range(2):
@@ -131,16 +162,24 @@ class ModularPongGame:
                 final_reward = -10.0
                 print(f"😞 Agent Byte loses. Wins: {self.agent.wins}/{self.agent.games_played + 1}")
                 print(f"👤 User played well! {self.env.user_hit_count} successful hits this game")
+                
+                # Use environment-specific feedback if available for user performance
+                if hasattr(self.env, 'get_performance_feedback_phrase'):
+                    total_user_actions = self.env.user_hit_count + self.env.user_miss_count
+                    if total_user_actions > 0:
+                        user_hit_rate = (self.env.user_hit_count / total_user_actions) * 100
+                        user_feedback = self.env.get_performance_feedback_phrase("hit_rate", user_hit_rate)
+                        print(f"   👤 {user_feedback}")
             
             # Final learning with balanced reward
             self.agent.learn(reward=final_reward, next_state=next_state, done=True)
             
-            # End match with comprehensive stats including adaptive learning
+            # End match with comprehensive stats including environment integration
             try:
                 final_scores = {'player': self.env.player_score, 'agent_byte': self.env.ai_score}
                 pong_stats = self.env.get_pong_stats()
                 
-                # Add knowledge system stats
+                # Add knowledge system and environment integration stats
                 pong_stats.update({
                     'user_demos_recorded_this_match': self.agent.user_demos_recorded,
                     'user_demos_used_this_match': self.agent.user_demos_processed,
@@ -150,13 +189,20 @@ class ModularPongGame:
                     'symbolic_decisions_made': self.agent.symbolic_decisions_made,
                     'neural_decisions_made': self.agent.neural_decisions_made,
                     'knowledge_effectiveness': self.agent.knowledge_effectiveness,
-                    # NEW: Adaptive learning stats
                     'adaptive_learning_enabled': self.adaptive_learning_enabled,
                     'gamma_used': self.agent.gamma,
                     'gamma_source': self.agent.gamma_source,
                     'default_gamma': self.agent.default_gamma,
                     'learning_parameters_adapted': self.agent.learning_parameters_adapted,
-                    'environment_learning_metadata': self.agent.environment_learning_metadata
+                    'environment_learning_metadata': self.agent.environment_learning_metadata,
+                    # NEW: Environment integration stats
+                    'environment_integrated': self.agent.env is not None,
+                    'environment_name': self.agent.env_context.get('name', 'unknown') if self.agent.env_context else 'none',
+                    'environment_constants_loaded': len(self.agent.env_constants),
+                    'modular_behavior_active': hasattr(self.agent.env, 'interpret_reward') if self.agent.env else False,
+                    'environment_specific_learning': bool(self.agent.env and hasattr(self.agent.env, 'generate_lesson_from_reward')),
+                    'environment_performance_feedback': bool(self.agent.env and hasattr(self.agent.env, 'get_performance_feedback_phrase')),
+                    'modular_integration_version': 'v1.2.2'
                 })
                 
                 self.agent.end_match(self.env.winner, final_scores, pong_stats)
@@ -164,18 +210,19 @@ class ModularPongGame:
                 print(f"❌ Error ending match: {e}")
                 self.agent.end_match(self.env.winner or "Unknown", {'player': 0, 'agent_byte': 0})
             
-            # Performance analysis
+            # Performance analysis with environment integration
             win_rate = self.agent.wins / self.agent.games_played if self.agent.games_played > 0 else 0
             demo_effectiveness = self.agent._calculate_demo_effectiveness()
             strategy_performance = self.agent.symbolic_decision_maker.get_strategy_performance_summary()
             
             self.running = False
-            self.agent.save_brain('adaptive_knowledge_enhanced_agent_byte_v1_2.json')
+            self.agent.save_brain('modular_adaptive_knowledge_enhanced_agent_byte_v1_2.json')
             
             print(f"📊 Game {self.agent.games_played} Complete:")
             print(f"   🎯 Win rate: {win_rate*100:.1f}%")
             print(f"   🎯 Target updates: {self.agent.target_updates}")
             print(f"   💰 Match reward: {self.agent.match_reward:.1f}")
+            print(f"   🏗️ Environment integration: {'Active' if self.agent.env else 'Inactive'}")
             print(f"   👤 User demos this match: {self.agent.user_demos_recorded}")
             print(f"   🎓 Demo effectiveness: {demo_effectiveness:.2f}")
             print(f"   🧩 Knowledge decisions: {self.agent.symbolic_decisions_made} symbolic, {self.agent.neural_decisions_made} neural")
@@ -184,11 +231,17 @@ class ModularPongGame:
             print(f"   📈 Exploration: {self.agent.exploration_rate:.3f}")
             if strategy_performance:
                 print(f"   🎯 Strategy performance: {strategy_performance}")
+            
+            # Show environment-specific performance summary if available
+            if hasattr(self.env, 'get_performance_feedback_phrase'):
+                if self.agent.hit_to_score_bonuses > 0:
+                    bonus_feedback = self.env.get_performance_feedback_phrase("streak", self.agent.hit_to_score_bonuses)
+                    print(f"   🎳 Hit-to-score performance: {bonus_feedback}")
         
         # Auto-save (less frequent for mobile)
         self.frames_since_save += 1
         if self.frames_since_save >= self.auto_save_interval:
-            self.agent.save_brain('adaptive_knowledge_enhanced_agent_byte_v1_2.json')
+            self.agent.save_brain('modular_adaptive_knowledge_enhanced_agent_byte_v1_2.json')
             self.frames_since_save = 0
     
     def move_player_paddle(self, direction):
@@ -201,7 +254,7 @@ class ModularPongGame:
         self.env.set_ball_speed(speed)
     
     def get_game_state(self):
-        """Return game state for web interface with adaptive learning + knowledge system stats"""
+        """Return game state for web interface with enhanced environment integration stats"""
         game_state = self.env.get_game_state()
         
         # Add agent stats
@@ -211,14 +264,13 @@ class ModularPongGame:
         pong_stats = self.env.get_pong_stats()
         agent_stats.update(pong_stats)
         
-        # Add knowledge system specific stats
+        # Add enhanced environment integration stats
         agent_stats.update({
             'demo_learning_enabled': self.demo_learning_enabled,
             'demo_recording_active': self.demo_recording_active,
             'knowledge_system_enabled': self.knowledge_system_enabled,
             'user_demo_buffer_usage': len(self.agent.user_demo_buffer),
             'demo_learning_effectiveness': self.agent._calculate_demo_effectiveness(),
-            # NEW: Adaptive learning stats
             'adaptive_learning_enabled': self.adaptive_learning_enabled,
             'adaptive_learning_history': self.adaptive_learning_history[-10:],  # Last 10 adaptations
             'current_gamma_info': {
@@ -227,6 +279,16 @@ class ModularPongGame:
                 'default': self.agent.default_gamma,
                 'adapted': self.agent.learning_parameters_adapted,
                 'environment_metadata': self.agent.environment_learning_metadata
+            },
+            # NEW: Enhanced environment integration status
+            'environment_integration': {
+                'active': self.agent.env is not None,
+                'environment_name': self.agent.env_context.get('name', 'unknown') if self.agent.env_context else 'none',
+                'constants_loaded': len(self.agent.env_constants),
+                'modular_behavior_active': hasattr(self.agent.env, 'interpret_reward') if self.agent.env else False,
+                'environment_learning_active': bool(self.agent.env and hasattr(self.agent.env, 'generate_lesson_from_reward')),
+                'performance_feedback_active': bool(self.agent.env and hasattr(self.agent.env, 'get_performance_feedback_phrase')),
+                'integration_version': 'v1.2.2'
             }
         })
         
@@ -252,7 +314,6 @@ class ModularPongGame:
         print(f"🧩 Knowledge system: {'ENABLED' if self.knowledge_system_enabled else 'DISABLED'}")
         return self.knowledge_system_enabled
     
-    # NEW: Adaptive learning controls
     def toggle_adaptive_learning(self):
         """Toggle adaptive learning system on/off"""
         self.adaptive_learning_enabled = not self.adaptive_learning_enabled
@@ -299,13 +360,44 @@ class ModularPongGame:
     def get_knowledge_analysis(self):
         """Get detailed knowledge system analysis"""
         return self.agent.get_detailed_knowledge_analysis()
+    
+    def get_environment_integration_status(self):
+        """Get detailed environment integration status"""
+        if not self.agent.env:
+            return "🏗️ Environment Integration: INACTIVE"
+        
+        status = f"""
+🏗️ ENVIRONMENT INTEGRATION STATUS - Agent Byte v1.2
+═══════════════════════════════════════════════════════════════
 
-# Flask setup with enhanced adaptive learning + knowledge system
+🌟 Integration Active: YES
+   Environment: {self.agent.env_context.get('name', 'unknown') if self.agent.env_context else 'loading...'}
+   Version: {self.agent.env_context.get('version', 'unknown') if self.agent.env_context else 'unknown'}
+   
+⚙️ Modular Features Available:
+   Reward Interpretation: {'✅' if hasattr(self.env, 'interpret_reward') else '❌'}
+   Lesson Generation: {'✅' if hasattr(self.env, 'generate_lesson_from_reward') else '❌'}
+   Strategy Generation: {'✅' if hasattr(self.env, 'generate_strategy_from_performance') else '❌'}
+   Performance Feedback: {'✅' if hasattr(self.env, 'get_performance_feedback_phrase') else '❌'}
+   Demo Formatting: {'✅' if hasattr(self.env, 'format_user_demo_outcome') else '❌'}
+   
+📊 Constants Loaded: {len(self.agent.env_constants)}
+   {', '.join(list(self.agent.env_constants.keys())[:5])}{'...' if len(self.agent.env_constants) > 5 else ''}
+
+🎯 Current Session:
+   Environment Learning: {'Active' if bool(self.agent.env and hasattr(self.agent.env, 'generate_lesson_from_reward')) else 'Inactive'}
+   Modular Behavior: {'Active' if hasattr(self.agent.env, 'interpret_reward') else 'Inactive'}
+   Integration Version: v1.2.2
+        """
+        
+        return status.strip()
+
+# Flask setup with enhanced environment integration
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'adaptive_knowledge_enhanced_agent_byte_2024'
+app.config['SECRET_KEY'] = 'modular_adaptive_knowledge_enhanced_agent_byte_2024'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-print("🚀 Creating Modular Game with Adaptive Learning + Knowledge System...")
+print("🚀 Creating Modular Game with Enhanced Environment Integration...")
 game = ModularPongGame()
 
 @app.route('/')
@@ -461,7 +553,7 @@ def get_strategy_performance():
         'message': 'Strategy performance data updated'
     })
 
-# NEW: Adaptive Learning Controls
+# Adaptive Learning Controls
 @socketio.on('toggle_adaptive_learning')
 def toggle_adaptive_learning():
     enabled = game.toggle_adaptive_learning()
@@ -498,22 +590,31 @@ def get_current_gamma_info():
     }
     emit('gamma_info_update', gamma_info)
 
+# NEW: Environment Integration Controls
+@socketio.on('get_environment_integration_status')
+def get_environment_integration_status():
+    status = game.get_environment_integration_status()
+    emit('environment_integration_status_update', {
+        'status': status,
+        'message': 'Environment integration status updated'
+    })
+
 # Agent controls
 @socketio.on('save_ai_brain')
 def save_ai_brain():
-    game.agent.save_brain('adaptive_knowledge_enhanced_agent_byte_v1_2.json')
+    game.agent.save_brain('modular_adaptive_knowledge_enhanced_agent_byte_v1_2.json')
     stats = game.agent.get_stats()
     emit('ai_brain_saved', {
-        'message': f'🧠 Agent Byte v1.2 Adaptive Learning saved! Gamma: {stats.get("gamma", 0):.3f}, Knowledge effectiveness: {stats.get("knowledge_effectiveness", 0):.3f}'
+        'message': f'🧠 Agent Byte v1.2 Modular saved! Gamma: {stats.get("gamma", 0):.3f}, Environment: {stats.get("environment_name", "none")}, Knowledge: {stats.get("knowledge_effectiveness", 0):.3f}'
     })
 
 @socketio.on('create_ai_checkpoint')
 def create_ai_checkpoint():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    checkpoint_filename = f'adaptive_knowledge_enhanced_checkpoint_{timestamp}.json'
+    checkpoint_filename = f'modular_adaptive_knowledge_enhanced_checkpoint_{timestamp}.json'
     game.agent.save_brain(checkpoint_filename)
     emit('ai_checkpoint_created', {
-        'message': f'📸 Adaptive Knowledge Enhanced Checkpoint saved: {checkpoint_filename}'
+        'message': f'📸 Modular Adaptive Knowledge Enhanced Checkpoint saved: {checkpoint_filename}'
     })
 
 @socketio.on('smart_reset_ai')
@@ -530,8 +631,11 @@ def smart_reset_ai():
     game.agent.neural_decisions_made = 0
     game.agent.symbolic_decision_maker.decision_history = []
     
+    # Show environment integration status in reset message
+    env_status = "with environment integration" if game.agent.env else "without environment integration"
+    
     emit('ai_smart_reset', {
-        'message': f'🧠 Smart reset applied! Kept {demo_count} demos, reset knowledge tracking. Gamma: {game.agent.gamma:.3f}'
+        'message': f'🧠 Smart reset applied {env_status}! Kept {demo_count} demos, reset knowledge tracking. Gamma: {game.agent.gamma:.3f}'
     })
 
 @socketio.on('clear_bad_experiences')
@@ -550,11 +654,18 @@ if __name__ == '__main__':
         os.makedirs('templates')
     
     print("\n" + "="*80)
-    print("🧠 ADAPTIVE LEARNING + KNOWLEDGE ENHANCED AGENT BYTE v1.2")
+    print("🧠 MODULAR ADAPTIVE LEARNING + KNOWLEDGE ENHANCED AGENT BYTE v1.2")
     print("="*80)
     print("🚀 Server starting on PORT 5001...")
     print("📱 Open browser to: http://localhost:5001")
-    print("🤖 Enhanced Agent Byte: Now with ADAPTIVE LEARNING + intelligent symbolic knowledge application!")
+    print("🤖 Enhanced Agent Byte: Now with MODULAR ENVIRONMENT INTEGRATION!")
+    print("🏗️ MODULAR ENVIRONMENT INTEGRATION FEATURES:")
+    print("   ✅ Environment-specific reward interpretation and lesson generation")
+    print("   ✅ Automatic strategy discovery based on environment context")
+    print("   ✅ Environment constants integration for dynamic thresholds")
+    print("   ✅ Symbolic performance feedback tailored to each environment")
+    print("   ✅ Pluggable environment behavior for easy chess/other game integration")
+    print("   ✅ Fallback behavior when environment methods are not available")
     print("🔧 ADAPTIVE LEARNING FEATURES:")
     print("   ✅ Environment-specific parameter optimization (Gamma, Learning Rate, Exploration)")
     print("   ✅ Automatic adaptation based on environment characteristics")
@@ -579,20 +690,23 @@ if __name__ == '__main__':
     print("   🧩 Game situations → Intelligent strategy selection")
     print("   📊 Strategy outcomes → Performance optimization")
     print("   🔧 Environment type → Automatic parameter adaptation")
+    print("   🌟 Environment methods → Modular behavior activation")
     print("⚡ ADAPTIVE LEARNING PARAMETERS:")
     print(f"   Pong Gamma: {game.env.recommended_gamma} (short-term focus)")
     print(f"   Default Gamma: {game.agent.default_gamma} (fallback)")
     print(f"   Current Gamma: {game.agent.gamma} ({game.agent.gamma_source})")
     print(f"   Learning Rate: {game.agent.learning_rate}")
     print(f"   Adaptive system: {'ENABLED' if game.adaptive_learning_enabled else 'DISABLED'}")
-    print("🎮 HOW ADAPTIVE LEARNING WORKS:")
-    print("   1. Environment provides recommended learning parameters")
-    print("   2. Agent automatically adapts Gamma, Learning Rate, Exploration")
-    print("   3. Parameters are optimized for environment characteristics")
-    print("   4. Performance with different parameters is tracked")
-    print("   5. Best performing parameters are remembered for future sessions")
-    print("   6. Real-time monitoring shows adaptation effectiveness")
-    print("🔧 Ball speed controls + Exploration controls + Demo controls + Knowledge controls + Adaptive learning controls")
+    print("🎮 HOW MODULAR ENVIRONMENT INTEGRATION WORKS:")
+    print("   1. Environment provides specific interpretation methods (interpret_reward, generate_lesson_from_reward)")
+    print("   2. Agent Byte automatically uses environment methods when available")
+    print("   3. Environment constants define dynamic thresholds for rewards and bonuses")
+    print("   4. Performance feedback is tailored to the specific environment context")
+    print("   5. Lessons and strategies are generated using environment-specific vocabulary")
+    print("   6. Agent falls back to generic behavior when environment methods are unavailable")
+    print("🏆 CHESS INTEGRATION READY:")
+    print("   Agent Byte can now easily integrate with ChessEnvironment using the same pattern!")
+    print("🔧 Ball speed controls + Exploration controls + Demo controls + Knowledge controls + Adaptive learning controls + Environment integration controls")
     print("🏆 First to 21 points wins!")
     print("="*80)
     
@@ -611,6 +725,16 @@ if __name__ == '__main__':
     print(f"   Recording: {'ACTIVE' if game.demo_recording_active else 'PAUSED'}")
     print(f"   Available demos: {len(game.agent.user_demo_buffer)}")
     
+    print(f"🏗️ Environment Integration Status:")
+    print(f"   Environment: {game.agent.env_context.get('name', 'unknown') if game.agent.env_context else 'loading...'}")
+    print(f"   Integration: {'ACTIVE' if game.agent.env else 'INACTIVE'}")
+    print(f"   Constants loaded: {len(game.agent.env_constants)}")
+    print(f"   Modular interpretation: {'Available' if hasattr(game.env, 'interpret_reward') else 'Not available'}")
+    print(f"   Environment learning: {'Available' if hasattr(game.env, 'generate_lesson_from_reward') else 'Not available'}")
+    print(f"   Performance feedback: {'Available' if hasattr(game.env, 'get_performance_feedback_phrase') else 'Not available'}")
+    print(f"   Demo formatting: {'Available' if hasattr(game.env, 'format_user_demo_outcome') else 'Not available'}")
+    print(f"   Strategy generation: {'Available' if hasattr(game.env, 'generate_strategy_from_performance') else 'Not available'}")
+    
     # Show recent performance
     recent_perf = game.logger.get_recent_performance()
     if recent_perf:
@@ -621,6 +745,38 @@ if __name__ == '__main__':
         print(f"   🧩 Avg symbolic decisions: {recent_perf.get('avg_symbolic_decisions_per_match', 0):.1f}")
         print(f"   🔧 Adaptive learning usage: {recent_perf.get('adaptive_learning_usage_rate', 0):.1f}%")
         print(f"   📈 Total matches: {recent_perf['total_matches']}")
+        print("="*80)
+    
+    # Show environment integration capabilities
+    if game.agent.env:
+        print(f"🌟 Environment Integration Capabilities Verified:")
+        capabilities = []
+        if hasattr(game.env, 'interpret_reward'):
+            capabilities.append("✅ Reward Interpretation")
+        if hasattr(game.env, 'generate_lesson_from_reward'):
+            capabilities.append("✅ Lesson Generation")
+        if hasattr(game.env, 'generate_strategy_from_performance'):
+            capabilities.append("✅ Strategy Generation")
+        if hasattr(game.env, 'get_performance_feedback_phrase'):
+            capabilities.append("✅ Performance Feedback")
+        if hasattr(game.env, 'format_user_demo_outcome'):
+            capabilities.append("✅ Demo Formatting")
+        if hasattr(game.env, 'should_generate_lesson'):
+            capabilities.append("✅ Lesson Triggers")
+        if hasattr(game.env, 'should_generate_strategy'):
+            capabilities.append("✅ Strategy Triggers")
+        if hasattr(game.env, 'get_environment_specific_constants'):
+            capabilities.append("✅ Environment Constants")
+        
+        for capability in capabilities:
+            print(f"   {capability}")
+        
+        if len(capabilities) == 8:
+            print("   🎯 FULL MODULAR INTEGRATION ACTIVE!")
+        elif len(capabilities) >= 5:
+            print("   🔥 ENHANCED MODULAR INTEGRATION ACTIVE!")
+        else:
+            print("   ⚠️ PARTIAL MODULAR INTEGRATION")
         print("="*80)
     
     socketio.run(app, host='0.0.0.0', port=5001, debug=True)
