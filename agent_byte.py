@@ -1,4 +1,4 @@
-# agent_byte.py - Enhanced with Adaptive Learning Parameters + Knowledge System
+# agent_byte.py - Enhanced Modular Agent with Environment Integration
 import numpy as np
 import json
 import time
@@ -12,7 +12,8 @@ from dual_brain_system import DualBrainAgent, AgentBrain, AgentKnowledge
 from knowledge_system import SymbolicDecisionMaker
 
 class MatchLogger:
-    # Keep your existing MatchLogger implementation
+    """Match logging system for tracking performance across games"""
+    
     def __init__(self, log_filename='agent_byte_match_logs.json'):
         self.log_file = log_filename
         self.current_match = None
@@ -46,7 +47,7 @@ class MatchLogger:
                 'exploration_rate_end': 0,
                 'training_steps': 0,
                 'target_updates': 0,
-                'architecture': 'Agent Byte v1.2 - Adaptive Learning + Knowledge System Enhanced',
+                'architecture': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
                 'hit_to_score_bonuses': 0,
                 'human_demos_used': 0,
                 'user_demos_recorded': 0,
@@ -56,7 +57,6 @@ class MatchLogger:
                 'symbolic_decisions_made': 0,
                 'neural_decisions_made': 0,
                 'knowledge_effectiveness': 0.0,
-                # NEW: Adaptive learning parameters tracking
                 'gamma_used': 0.99,
                 'gamma_source': 'default',
                 'learning_rate_used': 0.001,
@@ -67,7 +67,7 @@ class MatchLogger:
             'user_demonstrations': [],
             'symbolic_insights': [],
             'strategic_decisions': [],
-            'learning_adaptations': []  # NEW: Track learning parameter changes
+            'learning_adaptations': []
         }
         print(f"🆕 Started logging {game_type} match {match_id}")
     
@@ -136,7 +136,7 @@ class MatchLogger:
             data = {
                 'total_matches': len(self.all_matches),
                 'last_updated': datetime.datetime.now().isoformat(),
-                'version': 'Agent Byte v1.2 - Adaptive Learning + Knowledge System Enhanced',
+                'version': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
                 'matches': self.all_matches
             }
             with open(self.log_file, 'w') as f:
@@ -157,7 +157,6 @@ class MatchLogger:
         total_lessons = sum(match['agent_byte_stats'].get('symbolic_lessons_learned', 0) for match in recent)
         total_symbolic_decisions = sum(match['agent_byte_stats'].get('symbolic_decisions_made', 0) for match in recent)
         
-        # NEW: Track adaptive learning usage
         gamma_adaptations = sum(1 for match in recent if match['agent_byte_stats'].get('learning_parameters_adapted', False))
         
         return {
@@ -176,8 +175,10 @@ class MatchLogger:
             'total_wins': sum(1 for match in self.all_matches if match['winner'] == 'Agent Byte')
         }
 
+
 class DuelingNetwork:
-    # Keep your existing DuelingNetwork implementation (unchanged)
+    """Dueling DQN Network implementation"""
+    
     def __init__(self, input_size, hidden_sizes, output_size, learning_rate=0.001):
         self.input_size = input_size
         self.hidden_sizes = hidden_sizes
@@ -266,19 +267,24 @@ class DuelingNetwork:
         self.value_stream['weights2'] += self.learning_rate * np.outer(self.v1_activated, [value_error])
         self.value_stream['biases2'] += self.learning_rate * value_error
         return np.mean(q_error ** 2)
-
+        
 class AgentByte:
-    """Enhanced Agent Byte with Adaptive Learning Parameters + Dual Brain Architecture + Knowledge System"""
+    """Enhanced Modular Agent Byte with Environment Integration + Dual Brain Architecture + Knowledge System"""
     
     def __init__(self, state_size=14, action_size=3, logger=None, app_name="unknown_game"):
-        print("🚀 Agent Byte v1.2 - Adaptive Learning + Knowledge System Enhanced Initializing...")
+        print("🚀 Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced Initializing...")
         
         # Initialize dual brain system
         self.dual_brain = DualBrainAgent()
         self.app_name = app_name
         self.app_context = None
         
-        # NEW: Initialize symbolic decision maker
+        # NEW: Environment integration for modular behavior
+        self.env = None  # Will be set by the coordinator
+        self.env_context = None
+        self.env_constants = {}
+        
+        # Initialize symbolic decision maker
         self.symbolic_decision_maker = SymbolicDecisionMaker()
         
         # Neural network components
@@ -299,7 +305,7 @@ class AgentByte:
         self.min_exploration = 0.1
         self.gamma = self.dual_brain.brain.gamma  # Default gamma from brain, will be overridden per environment
         
-        # NEW: Adaptive learning tracking
+        # Adaptive learning tracking
         self.default_gamma = self.gamma
         self.environment_gamma = None
         self.gamma_source = "default"
@@ -350,13 +356,25 @@ class AgentByte:
         # Logger
         self.logger = logger or MatchLogger()
         
-        print("✅ Agent Byte v1.2 Adaptive Learning + Knowledge System Enhanced Created!")
+        print("✅ Agent Byte v1.2 Modular + Adaptive Learning + Knowledge System Enhanced Created!")
         print(f"   🧠 Core Brain: {self.training_steps} training steps")
         print(f"   🧩 Knowledge: Symbolic learning + intelligent application")
         print(f"   🎯 Architecture: Neural + Symbolic Decision Making")
         print(f"   👤 Demo Learning: Enhanced with symbolic understanding")
         print(f"   ⚙️ Adaptive Learning: Environment-specific parameter optimization")
         print(f"   🔧 Default Gamma: {self.gamma} (will adapt per environment)")
+        print(f"   🏗️ Modular Design: Ready for environment-specific integration")
+
+    def set_environment(self, env):
+        """Set the environment instance for modular behavior"""
+        self.env = env
+        if hasattr(env, 'get_env_context'):
+            self.env_context = env.get_env_context()
+            print(f"🌟 Environment context loaded: {self.env_context.get('name', 'unknown')}")
+        
+        if hasattr(env, 'get_environment_specific_constants'):
+            self.env_constants = env.get_environment_specific_constants()
+            print(f"⚙️ Environment constants loaded: {len(self.env_constants)} parameters")
 
     def start_new_match(self, game_type="game", env_context=None):
         """Start new match with adaptive learning parameter loading"""
@@ -378,7 +396,7 @@ class AgentByte:
         # Load symbolic context for this game with environmental context
         self.app_context = self.dual_brain.start_session(game_type, env_context=env_context)
         
-        # NEW: Adapt learning parameters based on environment context
+        # Adapt learning parameters based on environment context
         self._adapt_learning_parameters(env_context)
         
         # Start logging
@@ -404,27 +422,14 @@ class AgentByte:
                         'rationale': self.environment_learning_metadata.get('gamma_rationale', 'Environment-specific optimization')
                     })
         
-        print(f"🆕 New {game_type} match started with adaptive learning + knowledge system enabled")
+        print(f"🆕 New {game_type} match started with modular adaptive learning + knowledge system enabled")
         if self.app_context:
             strategies = len(self.app_context.get('strategies', []))
             lessons = len(self.app_context.get('lessons', []))
             print(f"   📚 Available knowledge: {strategies} strategies, {lessons} lessons")
             print(f"   🧩 Knowledge system: Active and ready for intelligent decision making")
             print(f"   ⚙️ Learning parameters: Gamma={self.gamma:.3f} ({self.gamma_source})")
-            
-            # Show environmental understanding if available
-            if env_context:
-                print(f"   🌟 Environmental understanding acquired:")
-                print(f"      🎯 Objective: {env_context['objective']['primary']}")
-                print(f"      📋 Rules: {len(env_context.get('rules', {}))} rule categories understood")
-                print(f"      🧠 Strategic concepts: {len(env_context.get('strategic_concepts', {}).get('core_skills', []))} core skills")
-                print(f"      💡 Learning recommendations: {sum(len(recs) for recs in env_context.get('learning_recommendations', {}).values())} recommendations")
-                
-                # Show learning parameter adaptations
-                if self.learning_parameters_adapted:
-                    print(f"   🔧 Adaptive learning applied:")
-                    print(f"      Gamma: {self.default_gamma:.3f} → {self.gamma:.3f}")
-                    print(f"      Rationale: {self.environment_learning_metadata.get('gamma_rationale', 'Environment-specific optimization')}")
+            print(f"   🏗️ Modular integration: Environment-specific behavior enabled")
 
     def _adapt_learning_parameters(self, env_context):
         """Adapt learning parameters based on environment context"""
@@ -453,12 +458,6 @@ class AgentByte:
                 
                 print(f"   🎯 Gamma adapted: {old_gamma:.3f} → {self.gamma:.3f}")
                 print(f"   📝 Rationale: {gamma_rationale}")
-            
-            # Could adapt other parameters here in the future:
-            # - learning_rate
-            # - exploration parameters
-            # - buffer sizes
-            # - network architecture
             
             # Store temporal characteristics for potential future optimizations
             temporal_chars = learning_params.get('temporal_characteristics', {})
@@ -501,7 +500,7 @@ class AgentByte:
                         self.logger.log_strategic_decision({
                             'action': action,
                             'reasoning': reasoning,
-                            'confidence': 0.8,  # Could extract this from reasoning
+                            'confidence': 0.8,
                             'strategy_used': reasoning.split("'")[1] if "'" in reasoning else "unknown"
                         })
                 else:
@@ -527,7 +526,7 @@ class AgentByte:
             return random.randint(0, self.action_size - 1)
 
     def learn(self, reward, next_state, done=False):
-        """Enhanced learning with adaptive gamma and symbolic insight generation"""
+        """Enhanced learning with modular environment integration and adaptive gamma"""
         if self.last_state is None or self.last_action is None:
             return
             
@@ -537,29 +536,59 @@ class AgentByte:
             elif len(next_state.shape) > 1:
                 next_state = next_state.flatten()
             
-            # NEW: Update strategy effectiveness tracking
+            # Update strategy effectiveness tracking
             self.symbolic_decision_maker.update_strategy_effectiveness(reward)
             
-            # Track hit-to-score bonuses and generate lessons
-            if reward > 3.5:
-                self.hit_to_score_bonuses += 1
-                self.total_bonus_reward += (reward - 3.0)
-                print(f"🎳 Hit-to-Score Bonus! Total: {self.hit_to_score_bonuses}")
+            # NEW: Use environment-specific interpretation for learning
+            if self.env:
+                # Check if environment should generate lessons or strategies
+                if hasattr(self.env, 'should_generate_lesson') and self.env.should_generate_lesson(reward):
+                    if hasattr(self.env, 'generate_lesson_from_reward'):
+                        lesson = self.env.generate_lesson_from_reward(reward)
+                        if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
+                            self.lessons_learned_this_match += 1
+                            print(f"📚 Environment lesson: {lesson}")
                 
-                # Generate symbolic lesson
-                lesson = f"Hit-to-score combo achieved with reward {reward:.1f} - timing and positioning critical"
-                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
-                    self.lessons_learned_this_match += 1
+                if hasattr(self.env, 'should_generate_strategy') and self.env.should_generate_strategy(reward):
+                    if hasattr(self.env, 'generate_strategy_from_performance'):
+                        strategy = self.env.generate_strategy_from_performance(
+                            self.wins, self.games_played, self.total_reward / max(1, self.games_played)
+                        )
+                        if self.dual_brain.knowledge.add_strategy(self.app_name, strategy):
+                            self.strategies_discovered_this_match += 1
+                            print(f"🎯 Environment strategy: {strategy}")
+                
+                # Track environment-specific bonuses using environment constants
+                if self.env_constants:
+                    hit_bonus_threshold = self.env_constants.get('hit_to_score_bonus_threshold', 3.5)
+                    if reward > hit_bonus_threshold:
+                        self.hit_to_score_bonuses += 1
+                        bonus_amount = reward - self.env_constants.get('task_completion_bonus', 3.0)
+                        self.total_bonus_reward += max(0, bonus_amount)
+                        
+                        # Use environment-specific interpretation
+                        if hasattr(self.env, 'interpret_reward'):
+                            interpretation = self.env.interpret_reward(reward)
+                            print(f"🎳 {interpretation}! Total bonuses: {self.hit_to_score_bonuses}")
+                        else:
+                            print(f"🎳 Bonus achieved! Total: {self.hit_to_score_bonuses}")
             
-            # Generate lessons based on reward patterns
-            if reward > 5.0:
-                lesson = f"High reward action ({reward:.1f}) - successful strategy worth repeating"
-                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
-                    self.lessons_learned_this_match += 1
-            elif reward < -3.0:
-                lesson = f"Poor outcome ({reward:.1f}) - avoid similar action patterns"
-                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
-                    self.lessons_learned_this_match += 1
+            else:
+                # Fallback behavior when no environment is set
+                # Use generic thresholds and messages
+                if reward > 3.5:
+                    self.hit_to_score_bonuses += 1
+                    self.total_bonus_reward += max(0, reward - 3.0)
+                    lesson = f"High reward combination ({reward:.1f}) - successful strategy worth repeating"
+                    if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
+                        self.lessons_learned_this_match += 1
+                        print(f"📚 Generic lesson: {lesson}")
+                
+                if reward > 5.0:
+                    strategy = f"High performance strategy: Achieved {reward:.1f} reward through consistent execution"
+                    if self.dual_brain.knowledge.add_strategy(self.app_name, strategy):
+                        self.strategies_discovered_this_match += 1
+                        print(f"🎯 Generic strategy: {strategy}")
             
             # Store experience
             experience = {
@@ -596,7 +625,7 @@ class AgentByte:
             self.dual_brain.brain.target_updates = self.target_updates
             self.dual_brain.brain.epsilon = self.exploration_rate
             self.dual_brain.brain.total_loss = self.total_loss
-            self.dual_brain.brain.gamma = self.gamma  # Update brain with current gamma
+            self.dual_brain.brain.gamma = self.gamma
             
             # Decay exploration
             if self.training_steps % 100 == 0:
@@ -626,7 +655,6 @@ class AgentByte:
                     'symbolic_decisions_made': self.symbolic_decisions_made,
                     'neural_decisions_made': self.neural_decisions_made,
                     'knowledge_effectiveness': self.knowledge_effectiveness,
-                    # NEW: Adaptive learning tracking
                     'gamma_used': self.gamma,
                     'gamma_source': self.gamma_source,
                     'learning_parameters_adapted': self.learning_parameters_adapted
@@ -640,7 +668,8 @@ class AgentByte:
                 print(f"🚀 Agent step {self.training_steps}:")
                 print(f"   🎯 Target updates: {self.target_updates}, Exploration: {self.exploration_rate:.3f}")
                 print(f"   🔧 Adaptive Learning: Gamma={self.gamma:.3f} ({self.gamma_source})")
-                print(f"   🎳 Hit-to-Score bonuses: {self.hit_to_score_bonuses}")
+                print(f"   🏗️ Environment integration: {'Active' if self.env else 'Inactive'}")
+                print(f"   🎳 Bonuses: {self.hit_to_score_bonuses}")
                 print(f"   👤 User demos: {len(self.user_demo_buffer)} available, {self.user_demos_processed} used")
                 print(f"   🧩 Symbolic decisions: {self.symbolic_decisions_made}, Neural: {self.neural_decisions_made}")
                 print(f"   📊 Knowledge effectiveness: {self.knowledge_effectiveness:.2f}")
@@ -717,8 +746,236 @@ class AgentByte:
         self.total_loss += total_loss / len(batch)
         self.double_dqn_improvements += double_dqn_benefits
 
+    def record_user_demo(self, demo_dict):
+        """Enhanced user demonstration recording with environment-specific insights"""
+        try:
+            if not all(key in demo_dict for key in ['state', 'action', 'reward', 'source', 'outcome']):
+                print(f"❌ Invalid demo data: missing required keys")
+                return False
+            
+            state = np.array(demo_dict["state"])
+            if state.shape[0] != self.state_size:
+                print(f"❌ Invalid demo state size: {state.shape[0]} != {self.state_size}")
+                return False
+            
+            action = demo_dict["action"]
+            if not (0 <= action < self.action_size):
+                print(f"❌ Invalid demo action: {action} not in range [0, {self.action_size})")
+                return False
+            
+            reward = demo_dict["reward"]
+            outcome = demo_dict["outcome"]
+            
+            # NEW: Use environment-specific interpretation for demo learning
+            if self.env and hasattr(self.env, 'format_user_demo_outcome'):
+                formatted_outcome = self.env.format_user_demo_outcome(outcome, reward)
+                print(f"👤 {formatted_outcome}")
+            
+            # Generate symbolic insight from demo using environment context
+            if outcome == "hit" and reward > 1.0:
+                if self.env and hasattr(self.env, 'generate_lesson_from_reward'):
+                    lesson = self.env.generate_lesson_from_reward(reward, context={'source': 'user_demo'})
+                else:
+                    lesson = f"User demonstrated successful technique with reward {reward:.1f}"
+                
+                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
+                    self.lessons_learned_this_match += 1
+            
+            enhanced_demo = {
+                'state': state,
+                'action': action,
+                'reward': reward,
+                'source': demo_dict["source"],
+                'outcome': outcome,
+                'timestamp': time.time(),
+                'quality_score': self._evaluate_demo_quality(outcome, reward),
+                'learning_weight': self._calculate_demo_weight(outcome, reward)
+            }
+            
+            self.user_demo_buffer.append(enhanced_demo)
+            self.user_demos_recorded += 1
+            
+            if self.logger.current_match:
+                self.logger.log_user_demonstration(enhanced_demo)
+            
+            # Use environment-specific feedback if available
+            if self.env and hasattr(self.env, 'get_performance_feedback_phrase'):
+                feedback = self.env.get_performance_feedback_phrase("demo_quality", enhanced_demo['quality_score'] * 100)
+                print(f"👤 User demo recorded: Action={action}, Outcome={outcome}, {feedback}")
+            else:
+                print(f"👤 User demo recorded: Action={action}, Outcome={outcome}, Quality={enhanced_demo['quality_score']:.2f}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error recording user demo: {e}")
+            return False
+
+    def _evaluate_demo_quality(self, outcome, reward):
+        """Evaluate the quality of a user demonstration using environment constants if available"""
+        if self.env_constants:
+            demo_success_reward = self.env_constants.get('demo_success_reward', 1.5)
+            demo_failure_penalty = self.env_constants.get('demo_failure_penalty', -0.5)
+            positioning_reward = self.env_constants.get('positioning_reward', 0.1)
+            
+            if outcome == "hit":
+                return min(1.0, 0.8 + (reward / demo_success_reward) * 0.2)
+            elif outcome == "miss":
+                return max(0.1, 0.3 + (reward / abs(demo_failure_penalty)) * 0.1)
+            elif outcome == "positioning":
+                return max(0.2, 0.5 + (reward / positioning_reward) * 0.5)
+        else:
+            # Fallback to original logic
+            if outcome == "hit":
+                return min(1.0, 0.8 + reward * 0.2)
+            elif outcome == "miss":
+                return max(0.1, 0.3 + reward * 0.1)
+            elif outcome == "positioning":
+                return max(0.2, 0.5 + reward * 0.5)
+        
+        return 0.5
+
+    def _calculate_demo_weight(self, outcome, reward):
+        """Calculate learning weight for demo using environment constants"""
+        base_weight = self.demo_learning_weight
+        
+        if self.env_constants:
+            demo_success_reward = self.env_constants.get('demo_success_reward', 1.5)
+            
+            if outcome == "hit" and reward > demo_success_reward * 0.7:
+                return base_weight * 1.5
+            elif outcome == "miss" and reward < 0:
+                return base_weight * 0.7
+            elif outcome == "positioning":
+                return base_weight * 0.8
+        else:
+            # Fallback to original logic
+            if outcome == "hit" and reward > 1.0:
+                return base_weight * 1.5
+            elif outcome == "miss" and reward < 0:
+                return base_weight * 0.7
+            elif outcome == "positioning":
+                return base_weight * 0.8
+        
+        return base_weight
+
+    def _calculate_demo_effectiveness(self):
+        """Calculate how effective user demonstrations have been"""
+        if self.user_demos_processed == 0:
+            return 0.0
+        
+        usage_rate = self.user_demos_processed / max(1, len(self.user_demo_buffer))
+        match_performance = max(0, self.match_reward) / max(1, abs(self.match_reward))
+        
+        return min(1.0, (usage_rate + match_performance) / 2)
+
+    def end_match(self, winner, final_scores=None, game_stats=None):
+        """Enhanced match ending with modular environment integration"""
+        try:
+            # Determine outcome for symbolic learning
+            win = (winner == "Agent Byte")
+            
+            # NEW: Use environment-specific interpretation if available
+            if self.env and hasattr(self.env, 'interpret_reward'):
+                outcome_summary = self.env.interpret_reward(self.match_reward)
+            else:
+                outcome_summary = f"{'Victory' if win else 'Defeat'} with reward {self.match_reward:.1f}"
+            
+            # Generate strategic insights based on performance using environment context
+            if win and self.match_reward > 10:
+                if self.env and hasattr(self.env, 'generate_strategy_from_performance'):
+                    strategy = self.env.generate_strategy_from_performance(
+                        self.wins + 1, self.games_played + 1, self.match_reward
+                    )
+                else:
+                    strategy = f"Winning strategy: Achieved {self.match_reward:.1f} reward through consistent play"
+                
+                if self.dual_brain.knowledge.add_strategy(self.app_name, strategy):
+                    self.strategies_discovered_this_match += 1
+            
+            elif not win and self.match_reward < -5:
+                if self.env and hasattr(self.env, 'generate_lesson_from_reward'):
+                    lesson = self.env.generate_lesson_from_reward(self.match_reward, context={'match_end': True})
+                else:
+                    lesson = f"Loss pattern: Negative reward {self.match_reward:.1f} indicates strategy adjustment needed"
+                
+                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
+                    self.lessons_learned_this_match += 1
+            
+            # Record result in symbolic knowledge
+            self.dual_brain.knowledge.record_game_result(self.app_name, win, self.match_reward, outcome_summary)
+            
+            # Generate reflections
+            reflections = self.dual_brain.knowledge.reflect_on_performance(self.app_name)
+            
+            # Analyze knowledge system performance
+            strategy_performance = self.symbolic_decision_maker.get_strategy_performance_summary()
+            
+            # End dual brain session
+            self.dual_brain.end_session(win, self.match_reward, outcome_summary)
+            
+            # Prepare final stats with adaptive learning info
+            final_stats = {
+                'match_reward': round(self.match_reward, 2),
+                'total_reward': round(self.total_reward, 2),
+                'actions_taken': self.actions_taken,
+                'training_steps': self.training_steps,
+                'target_updates': self.target_updates,
+                'double_dqn_improvements': self.double_dqn_improvements,
+                'exploration_rate_start': getattr(self, 'match_start_exploration', self.exploration_rate),
+                'exploration_rate_end': self.exploration_rate,
+                'architecture': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
+                'hit_to_score_bonuses': self.hit_to_score_bonuses,
+                'total_bonus_reward': round(self.total_bonus_reward, 2),
+                'human_demos_used': self.human_demos_used,
+                'user_demos_recorded': self.user_demos_recorded,
+                'user_demos_processed': self.user_demos_processed,
+                'symbolic_lessons_learned': self.lessons_learned_this_match,
+                'strategies_discovered': self.strategies_discovered_this_match,
+                'reflections_generated': len(reflections),
+                'symbolic_decisions_made': self.symbolic_decisions_made,
+                'neural_decisions_made': self.neural_decisions_made,
+                'knowledge_effectiveness': round(self.knowledge_effectiveness, 3),
+                'strategy_performance': strategy_performance,
+                'gamma_used': round(self.gamma, 4),
+                'gamma_source': self.gamma_source,
+                'default_gamma': round(self.default_gamma, 4),
+                'learning_parameters_adapted': self.learning_parameters_adapted,
+                'environment_learning_metadata': self.environment_learning_metadata,
+                'environment_integrated': self.env is not None,
+                'modular_behavior_active': hasattr(self.env, 'interpret_reward') if self.env else False
+            }
+            
+            if game_stats:
+                final_stats.update(game_stats)
+            
+            # End logging
+            self.logger.end_match(winner, final_scores or {'player': 0, 'agent_byte': 0}, final_stats)
+            
+            self.games_played += 1
+            if winner == "Agent Byte":
+                self.wins += 1
+            
+            print(f"🏁 Match ended: {winner} wins!")
+            print(f"   💰 Match reward: {self.match_reward:.1f}")
+            print(f"   🏗️ Environment integration: {'Active' if self.env else 'Inactive'}")
+            print(f"   🎳 Hit-to-Score bonuses: {self.hit_to_score_bonuses}")
+            print(f"   👤 User demos: recorded={self.user_demos_recorded}, used={self.user_demos_processed}")
+            print(f"   🧩 Knowledge system: {self.symbolic_decisions_made} symbolic, {self.neural_decisions_made} neural decisions")
+            print(f"   📊 Knowledge effectiveness: {self.knowledge_effectiveness:.2f}")
+            print(f"   🔧 Learning: Gamma={self.gamma:.3f} ({self.gamma_source}), Adapted={self.learning_parameters_adapted}")
+            print(f"   🤔 Generated {len(reflections)} new reflections")
+            if strategy_performance:
+                print(f"   🎯 Strategy performance: {strategy_performance}")
+            
+            return final_stats
+            
+        except Exception as e:
+            print(f"❌ Error in end_match: {e}")
+            return None
+
     def get_stats(self):
-        """Enhanced stats including adaptive learning parameters and knowledge system metrics"""
+        """Enhanced stats including adaptive learning parameters, knowledge system metrics, and environment integration"""
         avg_reward_per_game = self.total_reward / max(1, self.games_played)
         win_rate = self.wins / max(1, self.games_played)
         avg_loss = self.total_loss / max(1, self.training_steps)
@@ -770,7 +1027,7 @@ class AgentByte:
             'user_demo_buffer_size': int(len(self.user_demo_buffer)),
             'demo_learning_weight': float(self.demo_learning_weight),
             'demo_replay_ratio': float(self.demo_replay_ratio),
-            'architecture': 'Agent Byte v1.2 - Adaptive Learning + Knowledge System Enhanced',
+            'architecture': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
             'target_updates': int(self.target_updates),
             'double_dqn_improvements': int(self.double_dqn_improvements),
             'network_parameters': 15000,
@@ -786,13 +1043,20 @@ class AgentByte:
             'knowledge_effectiveness': float(round(self.knowledge_effectiveness, 3)),
             'strategy_performance': strategy_performance,
             
-            # NEW: Adaptive learning stats
+            # Adaptive learning stats
             'gamma': float(round(self.gamma, 4)),
             'gamma_source': self.gamma_source,
             'default_gamma': float(round(self.default_gamma, 4)),
             'environment_gamma': float(round(self.environment_gamma, 4)) if self.environment_gamma else None,
             'learning_parameters_adapted': self.learning_parameters_adapted,
             'environment_learning_metadata': self.environment_learning_metadata,
+            
+            # NEW: Modular environment integration stats
+            'environment_integrated': self.env is not None,
+            'environment_name': self.env_context.get('name', 'unknown') if self.env_context else 'none',
+            'environment_constants_loaded': len(self.env_constants),
+            'modular_behavior_active': hasattr(self.env, 'interpret_reward') if self.env else False,
+            'environment_specific_learning': bool(self.env and hasattr(self.env, 'generate_lesson_from_reward')),
             
             **knowledge_summary
         }
@@ -803,14 +1067,14 @@ class AgentByte:
         return stats
 
     def get_detailed_knowledge_analysis(self):
-        """Get detailed analysis of knowledge application including adaptive learning"""
+        """Get detailed analysis of knowledge application including adaptive learning and environment integration"""
         if not self.app_context:
             return "No active knowledge context"
         
         strategy_performance = self.symbolic_decision_maker.get_strategy_performance_summary()
         
         analysis = f"""
-🧩 KNOWLEDGE SYSTEM ANALYSIS - Agent Byte v1.2 Adaptive Learning
+🧩 MODULAR KNOWLEDGE SYSTEM ANALYSIS - Agent Byte v1.2
 ═══════════════════════════════════════════════════════════════
 
 📊 Strategy Performance:
@@ -827,6 +1091,13 @@ class AgentByte:
    Neural Decisions: {self.neural_decisions_made} ({(self.neural_decisions_made/(max(1, self.symbolic_decisions_made + self.neural_decisions_made))*100):.1f}%)
 
 📈 Knowledge Effectiveness: {self.knowledge_effectiveness:.3f}
+
+🏗️ Environment Integration:
+   Environment Active: {'Yes' if self.env else 'No'}
+   Environment Name: {self.env_context.get('name', 'unknown') if self.env_context else 'none'}
+   Constants Loaded: {len(self.env_constants)}
+   Modular Behavior: {'Active' if (self.env and hasattr(self.env, 'interpret_reward')) else 'Inactive'}
+   Environment Learning: {'Active' if (self.env and hasattr(self.env, 'generate_lesson_from_reward')) else 'Inactive'}
 
 ⚙️ Adaptive Learning Status:
    Current Gamma: {self.gamma:.4f}
@@ -866,191 +1137,20 @@ class AgentByte:
         
         return "\n".join(lines)
 
-    # Keep existing demo learning methods (unchanged)
-    def record_user_demo(self, demo_dict):
-        """Enhanced user demonstration recording with symbolic insights"""
-        try:
-            if not all(key in demo_dict for key in ['state', 'action', 'reward', 'source', 'outcome']):
-                print(f"❌ Invalid demo data: missing required keys")
-                return False
-            
-            state = np.array(demo_dict["state"])
-            if state.shape[0] != self.state_size:
-                print(f"❌ Invalid demo state size: {state.shape[0]} != {self.state_size}")
-                return False
-            
-            action = demo_dict["action"]
-            if not (0 <= action < self.action_size):
-                print(f"❌ Invalid demo action: {action} not in range [0, {self.action_size})")
-                return False
-            
-            reward = demo_dict["reward"]
-            outcome = demo_dict["outcome"]
-            
-            # Generate symbolic insight from demo
-            if outcome == "hit" and reward > 1.0:
-                lesson = f"User demonstrated successful hit technique with reward {reward:.1f}"
-                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
-                    self.lessons_learned_this_match += 1
-            
-            enhanced_demo = {
-                'state': state,
-                'action': action,
-                'reward': reward,
-                'source': demo_dict["source"],
-                'outcome': outcome,
-                'timestamp': time.time(),
-                'quality_score': self._evaluate_demo_quality(outcome, reward),
-                'learning_weight': self._calculate_demo_weight(outcome, reward)
-            }
-            
-            self.user_demo_buffer.append(enhanced_demo)
-            self.user_demos_recorded += 1
-            
-            if self.logger.current_match:
-                self.logger.log_user_demonstration(enhanced_demo)
-            
-            print(f"👤 User demo recorded: Action={action}, Outcome={outcome}, Quality={enhanced_demo['quality_score']:.2f}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error recording user demo: {e}")
-            return False
-
-    def _evaluate_demo_quality(self, outcome, reward):
-        """Evaluate the quality of a user demonstration"""
-        if outcome == "hit":
-            return min(1.0, 0.8 + reward * 0.2)
-        elif outcome == "miss":
-            return max(0.1, 0.3 + reward * 0.1)
-        elif outcome == "positioning":
-            return max(0.2, 0.5 + reward * 0.5)
-        else:
-            return 0.5
-
-    def _calculate_demo_weight(self, outcome, reward):
-        """Calculate learning weight for demo"""
-        base_weight = self.demo_learning_weight
-        
-        if outcome == "hit" and reward > 1.0:
-            return base_weight * 1.5
-        elif outcome == "miss" and reward < 0:
-            return base_weight * 0.7
-        elif outcome == "positioning":
-            return base_weight * 0.8
-        else:
-            return base_weight
-
-    def _calculate_demo_effectiveness(self):
-        """Calculate how effective user demonstrations have been"""
-        if self.user_demos_processed == 0:
-            return 0.0
-        
-        usage_rate = self.user_demos_processed / max(1, len(self.user_demo_buffer))
-        match_performance = max(0, self.match_reward) / max(1, abs(self.match_reward))
-        
-        return min(1.0, (usage_rate + match_performance) / 2)
-
-    def end_match(self, winner, final_scores=None, game_stats=None):
-        """Enhanced match ending with adaptive learning analysis"""
-        try:
-            # Determine outcome for symbolic learning
-            win = (winner == "Agent Byte")
-            outcome_summary = f"{'Victory' if win else 'Defeat'} with reward {self.match_reward:.1f}"
-            
-            # Generate strategic insights based on performance
-            if win and self.match_reward > 10:
-                strategy = f"Winning strategy: Achieved {self.match_reward:.1f} reward through consistent play"
-                if self.dual_brain.knowledge.add_strategy(self.app_name, strategy):
-                    self.strategies_discovered_this_match += 1
-            elif not win and self.match_reward < -5:
-                lesson = f"Loss pattern: Negative reward {self.match_reward:.1f} indicates strategy adjustment needed"
-                if self.dual_brain.knowledge.add_lesson(self.app_name, lesson):
-                    self.lessons_learned_this_match += 1
-            
-            # Record result in symbolic knowledge
-            self.dual_brain.knowledge.record_game_result(self.app_name, win, self.match_reward, outcome_summary)
-            
-            # Generate reflections
-            reflections = self.dual_brain.knowledge.reflect_on_performance(self.app_name)
-            
-            # Analyze knowledge system performance
-            strategy_performance = self.symbolic_decision_maker.get_strategy_performance_summary()
-            
-            # End dual brain session
-            self.dual_brain.end_session(win, self.match_reward, outcome_summary)
-            
-            # Prepare final stats with adaptive learning info
-            final_stats = {
-                'match_reward': round(self.match_reward, 2),
-                'total_reward': round(self.total_reward, 2),
-                'actions_taken': self.actions_taken,
-                'training_steps': self.training_steps,
-                'target_updates': self.target_updates,
-                'double_dqn_improvements': self.double_dqn_improvements,
-                'exploration_rate_start': getattr(self, 'match_start_exploration', self.exploration_rate),
-                'exploration_rate_end': self.exploration_rate,
-                'architecture': 'Agent Byte v1.2 - Adaptive Learning + Knowledge System Enhanced',
-                'hit_to_score_bonuses': self.hit_to_score_bonuses,
-                'total_bonus_reward': round(self.total_bonus_reward, 2),
-                'human_demos_used': self.human_demos_used,
-                'user_demos_recorded': self.user_demos_recorded,
-                'user_demos_processed': self.user_demos_processed,
-                'symbolic_lessons_learned': self.lessons_learned_this_match,
-                'strategies_discovered': self.strategies_discovered_this_match,
-                'reflections_generated': len(reflections),
-                'symbolic_decisions_made': self.symbolic_decisions_made,
-                'neural_decisions_made': self.neural_decisions_made,
-                'knowledge_effectiveness': round(self.knowledge_effectiveness, 3),
-                'strategy_performance': strategy_performance,
-                # NEW: Adaptive learning final stats
-                'gamma_used': round(self.gamma, 4),
-                'gamma_source': self.gamma_source,
-                'default_gamma': round(self.default_gamma, 4),
-                'learning_parameters_adapted': self.learning_parameters_adapted,
-                'environment_learning_metadata': self.environment_learning_metadata
-            }
-            
-            if game_stats:
-                final_stats.update(game_stats)
-            
-            # End logging
-            self.logger.end_match(winner, final_scores or {'player': 0, 'agent_byte': 0}, final_stats)
-            
-            self.games_played += 1
-            if winner == "Agent Byte":
-                self.wins += 1
-            
-            print(f"🏁 Match ended: {winner} wins!")
-            print(f"   💰 Match reward: {self.match_reward:.1f}")
-            print(f"   🎳 Hit-to-Score bonuses: {self.hit_to_score_bonuses}")
-            print(f"   👤 User demos: recorded={self.user_demos_recorded}, used={self.user_demos_processed}")
-            print(f"   🧩 Knowledge system: {self.symbolic_decisions_made} symbolic, {self.neural_decisions_made} neural decisions")
-            print(f"   📊 Knowledge effectiveness: {self.knowledge_effectiveness:.2f}")
-            print(f"   🔧 Learning: Gamma={self.gamma:.3f} ({self.gamma_source}), Adapted={self.learning_parameters_adapted}")
-            print(f"   🤔 Generated {len(reflections)} new reflections")
-            if strategy_performance:
-                print(f"   🎯 Strategy performance: {strategy_performance}")
-            
-            return final_stats
-            
-        except Exception as e:
-            print(f"❌ Error in end_match: {e}")
-            return None
-
     def save_brain(self, filename=None):
-        """Save dual brain system with adaptive learning metadata"""
+        """Save dual brain system with adaptive learning metadata and environment integration info"""
         # Save both brains
         success = self.dual_brain.save_all()
         
         if success:
             win_rate = (self.wins / max(1, self.games_played)) * 100
-            print(f"💾 Agent Byte v1.2 Adaptive Learning + Knowledge System Enhanced saved!")
+            print(f"💾 Agent Byte v1.2 Modular + Adaptive Learning + Knowledge System Enhanced saved!")
             print(f"   📊 Games: {self.games_played}, Win rate: {win_rate:.1f}%")
             print(f"   🧠 Core brain: {self.training_steps} steps, {self.target_updates} updates")
             print(f"   🧩 Knowledge: {len(self.dual_brain.knowledge.knowledge.get('categories', {}).get('games', {}))} environments")
             print(f"   🎯 Knowledge effectiveness: {self.knowledge_effectiveness:.3f}")
             print(f"   🔧 Adaptive learning: Gamma={self.gamma:.3f} ({self.gamma_source})")
+            print(f"   🏗️ Environment integration: {'Active' if self.env else 'Inactive'}")
         
         return success
 
@@ -1059,8 +1159,10 @@ class AgentByte:
         # Brain loading is handled by dual brain system initialization
         return True
 
+
+# Test section
 if __name__ == "__main__":
-    print("🧪 Testing Enhanced Agent Byte with Adaptive Learning + Knowledge System...")
+    print("🧪 Testing Enhanced Modular Agent Byte with Environment Integration...")
     
     # Test with environment context that includes learning parameters
     test_env_context = {
@@ -1077,18 +1179,78 @@ if __name__ == "__main__":
     }
     
     agent = AgentByte(state_size=14, action_size=3, app_name="test_pong")
+    
+    # Test environment integration
+    class MockEnvironment:
+        def get_environment_specific_constants(self):
+            return {
+                'hit_to_score_bonus_threshold': 3.5,
+                'high_reward_threshold': 5.0,
+                'task_completion_bonus': 3.0,
+                'demo_success_reward': 1.5,
+                'demo_failure_penalty': -0.5,
+                'positioning_reward': 0.1
+            }
+        
+        def interpret_reward(self, reward):
+            if reward >= 4.0:
+                return "Excellent combo execution"
+            elif reward >= 1.0:
+                return "Successful task completion"
+            else:
+                return "Learning opportunity"
+        
+        def generate_lesson_from_reward(self, reward, context=None):
+            interpretation = self.interpret_reward(reward)
+            source = context.get('source', 'general') if context else 'general'
+            return f"Environment lesson ({source}): {interpretation} (reward={reward:.1f})"
+        
+        def should_generate_lesson(self, reward):
+            return abs(reward) > 1.0
+        
+        def should_generate_strategy(self, reward):
+            return reward > 5.0
+        
+        def generate_strategy_from_performance(self, wins, games, avg_reward):
+            win_rate = (wins / max(1, games)) * 100
+            if win_rate > 70:
+                return f"Dominant strategy: {win_rate:.1f}% win rate with {avg_reward:.1f} avg reward"
+            elif win_rate > 50:
+                return f"Effective strategy: {win_rate:.1f}% win rate, focus on consistency"
+            else:
+                return f"Developing strategy: {win_rate:.1f}% win rate, need improvement"
+        
+        def format_user_demo_outcome(self, outcome, reward):
+            return f"Mock environment demo analysis: {outcome} with reward {reward:.2f}"
+        
+        def get_performance_feedback_phrase(self, metric_type, value):
+            if metric_type == "demo_quality":
+                if value > 80:
+                    return "Excellent technique demonstrated"
+                elif value > 60:
+                    return "Good form shown"
+                elif value > 40:
+                    return "Average execution"
+                else:
+                    return "Needs improvement"
+            return f"Performance: {value:.1f}"
+    
+    # Set mock environment
+    mock_env = MockEnvironment()
+    agent.set_environment(mock_env)
+    
     agent.start_new_match("test_pong", env_context=test_env_context)
     
     test_state = np.random.random(14)
     
-    # Test some actions and learning
-    for i in range(10):
+    # Test some actions and learning with environment integration
+    test_rewards = [5.0, -2.0, 1.5, 4.2, -0.5, 6.1, 0.8]
+    for i, reward in enumerate(test_rewards):
         action = agent.get_action(test_state)
-        reward = random.uniform(-2, 5)
         agent.learn(reward=reward, next_state=test_state, done=False)
         print(f"Action {i+1}: {action}, Reward: {reward:.2f}")
     
-    # Test user demo
+    # Test user demo with environment integration
     demo_success = agent.record_user_demo({
         'state': test_state.tolist(),
         'action': 1,
@@ -1097,19 +1259,54 @@ if __name__ == "__main__":
         'outcome': 'hit'
     })
     
+    print(f"Demo recording successful: {demo_success}")
+    
+    # Test another demo with different outcome
+    demo_success2 = agent.record_user_demo({
+        'state': test_state.tolist(),
+        'action': 0,
+        'reward': -0.3,
+        'source': 'user_action',
+        'outcome': 'miss'
+    })
+    
+    print(f"Second demo recording successful: {demo_success2}")
+    
     # Show detailed analysis
-    print("\n" + "="*50)
+    print("\n" + "="*70)
     print(agent.get_detailed_knowledge_analysis())
     
+    # Show stats
+    print("\n" + "="*70)
+    stats = agent.get_stats()
+    print("📊 AGENT STATS SUMMARY:")
+    print(f"   🎮 Games played: {stats['games_played']}")
+    print(f"   🏆 Win rate: {stats['win_rate']}%")
+    print(f"   🧠 Training steps: {stats['training_steps']}")
+    print(f"   🧩 Symbolic decisions: {stats['symbolic_decisions_made']}")
+    print(f"   🤖 Neural decisions: {stats['neural_decisions_made']}")
+    print(f"   📈 Knowledge effectiveness: {stats['knowledge_effectiveness']}")
+    print(f"   🔧 Gamma: {stats['gamma']} ({stats['gamma_source']})")
+    print(f"   🏗️ Environment integrated: {stats['environment_integrated']}")
+    print(f"   ⚙️ Modular behavior active: {stats['modular_behavior_active']}")
+    
     # End match
-    agent.end_match("Agent Byte", {'player': 15, 'agent_byte': 21})
+    final_stats = agent.end_match("Agent Byte", {'player': 15, 'agent_byte': 21})
     
     # Save everything
-    agent.save_brain()
+    save_success = agent.save_brain()
     
-    print(f"\n✅ Enhanced Agent Byte v1.2 Adaptive Learning test complete!")
+    print(f"\n✅ Enhanced Modular Agent Byte v1.2 test complete!")
     print(f"🧩 Symbolic decisions: {agent.symbolic_decisions_made}")
     print(f"🧠 Neural decisions: {agent.neural_decisions_made}")
     print(f"📊 Knowledge effectiveness: {agent.knowledge_effectiveness:.3f}")
     print(f"🔧 Gamma adapted: {agent.default_gamma:.3f} → {agent.gamma:.3f} ({agent.gamma_source})")
     print(f"⚙️ Learning parameters adapted: {agent.learning_parameters_adapted}")
+    print(f"🏗️ Environment integration: {'Active' if agent.env else 'Inactive'}")
+    print(f"🎯 Modular behavior: {'Working' if hasattr(agent.env, 'interpret_reward') else 'Not available'}")
+    print(f"💾 Brain save successful: {save_success}")
+    
+    if final_stats:
+        print(f"📋 Final match stats keys: {len(final_stats)} metrics recorded")
+        print(f"🔍 Environment integration recorded: {final_stats.get('environment_integrated', False)}")
+        print(f"🎮 Modular behavior active: {final_stats.get('modular_behavior_active', False)}")
