@@ -73,6 +73,9 @@ class PongEnvironment:
         self.user_hit_count = 0
         self.user_miss_count = 0
         self.user_successful_defenses = 0
+        self.user_action_pending = False
+        self.last_user_paddle_y = 0
+        self.user_ball_collision_detected = False
         
         self.reset_game()
         
@@ -95,7 +98,7 @@ class PongEnvironment:
         print("🧠 Symbolic Mapping: hit→success, miss→failure, score→completion")
 
     # NEW: Symbolic Interpretation Methods for Agent Byte Integration
-    
+
     def interpret_reward(self, reward):
         """Return a symbolic interpretation of the reward for Pong environment"""
         if reward >= 10.0:
@@ -124,8 +127,8 @@ class PongEnvironment:
             return "Significant failure - opponent scored"
         else:
             return "Major failure - critical mistake"
-    
-    def generate_lesson_from_reward(self, reward, context=None):
+
+    def generate_lesson_from_reward(self, reward):
         """Generate a learning lesson string from a reward in Pong context"""
         meaning = self.interpret_reward(reward)
         
@@ -637,6 +640,7 @@ class PongEnvironment:
         # Store previous positions for collision detection
         self.previous_ball_x = self.ball_x
         self.previous_ball_y = self.ball_y
+        self.user_ball_collision_detected = False
         
         # Move ball
         self.ball_x += self.ball_dx
@@ -659,8 +663,8 @@ class PongEnvironment:
         task_failure = False
         
         # AI paddle collision detection (task success)
-        if (self.ball_x >= self.width - self.paddle_width - self.ball_size / 2 and
-            self.ball_x <= self.width - self.paddle_width + self.ball_size / 2 and
+        if (
+                self.width - self.paddle_width - self.ball_size / 2 <= self.ball_x <= self.width - self.paddle_width + self.ball_size / 2 and
             self.ball_dx > 0 and
             self.ai_paddle_y <= self.ball_y <= self.ai_paddle_y + self.paddle_height):
             
@@ -672,19 +676,28 @@ class PongEnvironment:
             self.ball_dy += hit_position * 3  # Add spin based on hit position
         
         # Player paddle collision
-        elif (self.ball_x <= self.paddle_width + self.ball_size / 2 and
-              self.ball_x >= self.paddle_width - self.ball_size / 2 and
+        elif (self.paddle_width + self.ball_size / 2 >= self.ball_x >= self.paddle_width - self.ball_size / 2 and
               self.ball_dx < 0 and
               self.player_paddle_y <= self.ball_y <= self.player_paddle_y + self.paddle_height):
-            
+            self.user_ball_collision_detected = True
+            self.user_hit_count += 1
+            print(f"👤 USER HIT DETECTED! Total user hits: {self.user_hit_count}")
+
             # Reflect ball
             self.ball_dx = abs(self.ball_dx)
             hit_position = (self.ball_y - self.player_paddle_y - self.paddle_height / 2) / (self.paddle_height / 2)
             self.ball_dy += hit_position * 3  # Add spin based on hit position
-        
+        elif (self.ball_x < self.paddle_width - self.ball_size / 2 <= self.previous_ball_x and
+              self.ball_dx < 0 and
+              not (self.player_paddle_y <= self.ball_y <= self.player_paddle_y + self.paddle_height)):
+
+            # User missed the ball
+            self.user_miss_count += 1
+            print(f"👤 USER MISS DETECTED! Total user misses: {self.user_miss_count}")
+
+
         # Check for AI task failure (missed ball)
-        elif (self.ball_x > self.width - self.paddle_width + self.ball_size / 2 and
-              self.previous_ball_x <= self.width - self.paddle_width + self.ball_size / 2 and
+        elif (self.ball_x > self.width - self.paddle_width + self.ball_size / 2 >= self.previous_ball_x and
               self.ball_dx > 0 and
               not (self.ai_paddle_y <= self.ball_y <= self.ai_paddle_y + self.paddle_height)):
             
@@ -737,6 +750,7 @@ class PongEnvironment:
         next_state = self.create_state()
         
         return next_state, step_reward, game_ended
+
     def process_task_success(self):
         """Agent successfully intercepted ball - symbolic task success"""
         self.task_successes += 1
@@ -781,14 +795,19 @@ class PongEnvironment:
         self.last_action_was_hit = False  # Reset hit tracking after ball reset
 
     def move_player_paddle(self, direction):
-        """Move player paddle (for human control) and record action"""
+        """🔧 FIXED: Enhanced user action recording"""
+        # Store previous position for better tracking
+        self.last_user_paddle_y = self.player_paddle_y
+
         # Record the user action before moving
         self.record_user_action(direction)
-        
+
         # Move the paddle
         self.player_paddle_y += direction * self.paddle_speed
         self.player_paddle_y = max(0, min(self.height - self.paddle_height, self.player_paddle_y))
 
+        # Mark that user action is pending evaluation
+        self.user_action_pending = True
     def record_user_action(self, user_action):
         """Record user action for learning purposes"""
         current_state = self.create_player_state()
@@ -882,44 +901,38 @@ class PongEnvironment:
         return full_state
 
     def evaluate_user_action_outcome(self):
-        """Evaluate the outcome of the last user action"""
+        """🔧 FIXED: Better user action evaluation"""
         if self.last_user_action is None or self.last_user_state is None:
             return None
-        
-        # Check if user successfully hit the ball
-        user_hit = False
-        user_missed = False
-        
-        try:
-            # Player paddle collision detection
-            if (self.ball_x <= self.paddle_width + self.ball_size / 2 and
-                self.ball_x >= self.paddle_width - self.ball_size / 2 and
-                self.ball_dx < 0 and
-                self.player_paddle_y <= self.ball_y <= self.player_paddle_y + self.paddle_height):
-                user_hit = True
-                self.user_hit_count += 1
-                reward = 1.5  # Positive reward for successful hit
-                outcome = "hit"
-                print(f"👤 User successfully hit ball! Total user hits: {self.user_hit_count}")
-            
-            # Check if user missed the ball
-            elif (self.ball_x < self.paddle_width - self.ball_size / 2 and
-                  self.previous_ball_x >= self.paddle_width - self.ball_size / 2 and
-                  self.ball_dx < 0 and
-                  not (self.player_paddle_y <= self.ball_y <= self.player_paddle_y + self.paddle_height)):
-                user_missed = True
-                self.user_miss_count += 1
-                reward = -0.5  # Penalty for missing
-                outcome = "miss"
-                print(f"👤 User missed ball. Total user misses: {self.user_miss_count}")
-            
-            else:
-                # No immediate hit/miss, evaluate positioning
-                reward = self.evaluate_user_positioning()
-                outcome = "positioning"
-            
-            # Create demo entry if we have a clear outcome
-            if user_hit or user_missed:
+
+        # Check if user successfully hit the ball (using our enhanced collision detection)
+        if self.user_ball_collision_detected:
+            reward = 1.5  # Positive reward for successful hit
+            outcome = "hit"
+
+            # Create demo entry
+            demo_entry = {
+                'state': self.last_user_state.copy(),
+                'action': self.last_user_action,
+                'reward': reward,
+                'source': 'user_action',
+                'outcome': outcome,
+                'timestamp': time.time()
+            }
+
+            # Reset tracking
+            self.last_user_action = None
+            self.last_user_state = None
+            self.user_ball_collision_detected = False
+
+            return demo_entry
+
+        # For positioning actions, give small reward
+        elif self.user_action_pending:
+            reward = self.evaluate_user_positioning()
+            outcome = "positioning"
+
+            if abs(reward) > 0.01:  # Only record if meaningful positioning
                 demo_entry = {
                     'state': self.last_user_state.copy(),
                     'action': self.last_user_action,
@@ -928,19 +941,15 @@ class PongEnvironment:
                     'outcome': outcome,
                     'timestamp': time.time()
                 }
-                
+
                 # Reset tracking
                 self.last_user_action = None
                 self.last_user_state = None
-                
+                self.user_action_pending = False
+
                 return demo_entry
-            
-        except Exception as e:
-            print(f"❌ Error evaluating user action: {e}")
-            # Reset tracking on error
-            self.last_user_action = None
-            self.last_user_state = None
-        
+
+
         return None
 
     def evaluate_user_positioning(self):

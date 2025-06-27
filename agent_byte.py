@@ -11,15 +11,16 @@ import datetime
 from dual_brain_system import DualBrainAgent, AgentBrain, AgentKnowledge
 from knowledge_system import SymbolicDecisionMaker
 
+
 class MatchLogger:
     """Match logging system for tracking performance across games"""
-    
-    def __init__(self, log_filename='agent_byte_match_logs.json'):
+
+    def __init__(self, log_filename='agent_matches.json'):
         self.log_file = log_filename
         self.current_match = None
         self.all_matches = []
         self.load_match_history()
-    
+
     def load_match_history(self):
         try:
             if os.path.exists(self.log_file):
@@ -30,7 +31,7 @@ class MatchLogger:
         except Exception as e:
             print(f"⚠️ Could not load match history: {e}")
             self.all_matches = []
-    
+
     def start_match(self, match_id, game_type="unknown"):
         self.current_match = {
             'match_id': match_id,
@@ -70,7 +71,7 @@ class MatchLogger:
             'learning_adaptations': []
         }
         print(f"🆕 Started logging {game_type} match {match_id}")
-    
+
     def log_learning_adaptation(self, adaptation_info):
         """Log adaptive learning parameter changes"""
         if self.current_match:
@@ -83,7 +84,7 @@ class MatchLogger:
                 'rationale': adaptation_info.get('rationale')
             }
             self.current_match['learning_adaptations'].append(adaptation)
-    
+
     def log_symbolic_insight(self, insight_type, content):
         """Log symbolic learning insights"""
         if self.current_match:
@@ -93,7 +94,7 @@ class MatchLogger:
                 'content': content
             }
             self.current_match['symbolic_insights'].append(insight)
-    
+
     def log_strategic_decision(self, decision_info):
         """Log strategic decision made by knowledge system"""
         if self.current_match:
@@ -105,11 +106,24 @@ class MatchLogger:
                 'strategy_used': decision_info.get('strategy_used')
             }
             self.current_match['strategic_decisions'].append(decision)
-    
+
+    def log_user_demonstration(self, demo_data):
+        """Log user demonstration data"""
+        if self.current_match:
+            demo = {
+                'timestamp': time.time(),
+                'action': demo_data.get('action'),
+                'outcome': demo_data.get('outcome'),
+                'reward': demo_data.get('reward'),
+                'quality_score': demo_data.get('quality_score'),
+                'learning_weight': demo_data.get('learning_weight')
+            }
+            self.current_match['user_demonstrations'].append(demo)
+
     def update_match_stats(self, stats):
         if self.current_match:
             self.current_match['agent_byte_stats'].update(stats)
-    
+
     def end_match(self, winner, final_scores, final_stats):
         if not self.current_match:
             print("⚠️ No current match to end")
@@ -119,7 +133,7 @@ class MatchLogger:
             self.current_match['winner'] = winner
             self.current_match['final_score'] = final_scores or {'player': 0, 'agent_byte': 0}
             if isinstance(final_stats, dict):
-                self.current_match['agent_byte_stats'].update(final_stats)
+                self.current_match['agent_byte_stats'].update(self._convert_numpy_types(final_stats))
             start = datetime.datetime.fromisoformat(self.current_match['start_time'])
             end = datetime.datetime.fromisoformat(self.current_match['end_time'])
             self.current_match['duration_seconds'] = (end - start).total_seconds()
@@ -130,20 +144,20 @@ class MatchLogger:
         except Exception as e:
             print(f"❌ Error ending match: {e}")
             self.current_match = None
-    
+
     def save_match_history(self):
         try:
             data = {
                 'total_matches': len(self.all_matches),
                 'last_updated': datetime.datetime.now().isoformat(),
                 'version': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
-                'matches': self.all_matches
+                'matches': self._convert_numpy_types(self.all_matches)
             }
             with open(self.log_file, 'w') as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             print(f"❌ Could not save match history: {e}")
-    
+
     def get_recent_performance(self, last_n_matches=10):
         if not self.all_matches:
             return None
@@ -156,13 +170,15 @@ class MatchLogger:
         total_user_demos = sum(match['agent_byte_stats'].get('user_demos_recorded', 0) for match in recent)
         total_lessons = sum(match['agent_byte_stats'].get('symbolic_lessons_learned', 0) for match in recent)
         total_symbolic_decisions = sum(match['agent_byte_stats'].get('symbolic_decisions_made', 0) for match in recent)
-        
-        gamma_adaptations = sum(1 for match in recent if match['agent_byte_stats'].get('learning_parameters_adapted', False))
-        
+
+        gamma_adaptations = sum(
+            1 for match in recent if match['agent_byte_stats'].get('learning_parameters_adapted', False))
+
         return {
             'matches_analyzed': total_matches,
             'recent_win_rate': (wins / total_matches * 100) if total_matches > 0 else 0,
-            'recent_hit_rate': sum(match['agent_byte_stats'].get('task_success_rate', 0) for match in recent) / total_matches if total_matches > 0 else 0,
+            'recent_hit_rate': sum(match['agent_byte_stats'].get('task_success_rate', 0) for match in
+                                   recent) / total_matches if total_matches > 0 else 0,
             'avg_reward_per_match': total_reward / total_matches if total_matches > 0 else 0,
             'avg_hit_bonuses_per_match': total_hit_bonuses / total_matches if total_matches > 0 else 0,
             'avg_human_demos_per_match': total_human_demos / total_matches if total_matches > 0 else 0,
@@ -175,6 +191,37 @@ class MatchLogger:
             'total_wins': sum(1 for match in self.all_matches if match['winner'] == 'Agent Byte')
         }
 
+    def _convert_numpy_types(self, obj):
+        """Convert numpy types to JSON-serializable types"""
+        import numpy as np
+        from typing import Any, Union, Dict, List
+
+        if obj is None:
+            return None
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+            return int(obj.item())  # 🔧 FIX: Use .item() to extract scalar
+        elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+            return float(obj.item())  # 🔧 FIX: Use .item() to extract scalar
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (np.bool_, bool)):
+            return bool(obj.item() if hasattr(obj, 'item') else obj)  # 🔧 FIX: Safe bool conversion
+        elif isinstance(obj, (int, float, str, bool)):
+            return obj  # 🔧 FIX: Pass through regular Python types
+        else:
+            try:
+                # 🔧 FIX: Try to convert unknown numpy types
+                if hasattr(obj, 'item'):
+                    return obj.item()
+                else:
+                    return obj
+            except (ValueError, TypeError):
+                # 🔧 FIX: Fallback for unconvertible types
+                return str(obj)
 
 class DuelingNetwork:
     """Dueling DQN Network implementation"""
@@ -389,29 +436,33 @@ class AgentByte:
         self.strategies_discovered_this_match = 0
         self.symbolic_decisions_made = 0
         self.neural_decisions_made = 0
-        
+
         # Reset decision maker history for this match
         self.symbolic_decision_maker.decision_history = []
-        
+
         # Load symbolic context for this game with environmental context
         self.app_context = self.dual_brain.start_session(game_type, env_context=env_context)
-        
+
         # Adapt learning parameters based on environment context
         self._adapt_learning_parameters(env_context)
-        
+
         # Start logging
         match_id = f"agent_byte_{game_type}_{int(time.time())}"
         self.logger.start_match(match_id, game_type)
+
+        #  Use 'agent_stats' instead of 'agent_byte_stats'
         if self.logger.current_match:
             self.logger.current_match['agent_byte_stats']['exploration_rate_start'] = self.exploration_rate
             self.logger.current_match['agent_byte_stats']['gamma_used'] = self.gamma
             self.logger.current_match['agent_byte_stats']['gamma_source'] = self.gamma_source
-            self.logger.current_match['agent_byte_stats']['learning_parameters_adapted'] = self.learning_parameters_adapted
-            
+            self.logger.current_match['agent_byte_stats'][
+                'learning_parameters_adapted'] = self.learning_parameters_adapted
+
             # Log environmental context integration
             if env_context:
-                self.logger.log_symbolic_insight("env_context_loaded", f"Environment context integrated for {game_type}")
-                
+                self.logger.log_symbolic_insight("env_context_loaded",
+                                                 f"Environment context integrated for {game_type}")
+
                 # Log learning parameter adaptations
                 if self.learning_parameters_adapted:
                     self.logger.log_learning_adaptation({
@@ -419,9 +470,10 @@ class AgentByte:
                         'old_value': self.default_gamma,
                         'new_value': self.gamma,
                         'source': f'environment:{game_type}',
-                        'rationale': self.environment_learning_metadata.get('gamma_rationale', 'Environment-specific optimization')
+                        'rationale': self.environment_learning_metadata.get('gamma_rationale',
+                                                                            'Environment-specific optimization')
                     })
-        
+
         print(f"🆕 New {game_type} match started with modular adaptive learning + knowledge system enabled")
         if self.app_context:
             strategies = len(self.app_context.get('strategies', []))
@@ -430,7 +482,6 @@ class AgentByte:
             print(f"   🧩 Knowledge system: Active and ready for intelligent decision making")
             print(f"   ⚙️ Learning parameters: Gamma={self.gamma:.3f} ({self.gamma_source})")
             print(f"   🏗️ Modular integration: Environment-specific behavior enabled")
-
     def _adapt_learning_parameters(self, env_context):
         """Adapt learning parameters based on environment context"""
         if not env_context:
@@ -689,15 +740,15 @@ class AgentByte:
         strategy_performance = self.symbolic_decision_maker.get_strategy_performance_summary()
         if strategy_performance:
             # Average performance of symbolic vs neural decisions
-            symbolic_perf = strategy_performance.get('symbolic', 0)
-            neural_perf = strategy_performance.get('neural', 0)
-            
-            if neural_perf != 0:
-                self.knowledge_effectiveness = max(0, symbolic_perf / neural_perf)
+            symbolic_perf = strategy_performance.get('symbolic', 0.0)  # 🔧 FIX: Use 0.0 (float)
+            neural_perf = strategy_performance.get('neural', 0.0)  # 🔧 FIX: Use 0.0 (float)
+
+            if neural_perf != 0.0:  # 🔧 FIX: Compare with 0.0 (float)
+                self.knowledge_effectiveness = max(0.0, symbolic_perf / neural_perf)  # 🔧 FIX: Use 0.0 (float)
             else:
-                self.knowledge_effectiveness = 1.0 if symbolic_perf > 0 else 0.0
+                self.knowledge_effectiveness = 1.0 if symbolic_perf > 0.0 else 0.0  # 🔧 FIX: Use 0.0 and 1.0 (float)
         else:
-            self.knowledge_effectiveness = 0.0
+            self.knowledge_effectiveness = 0.0  # 🔧 FIX: Use 0.0 (float)
 
     def _train_networks(self):
         """Enhanced training with adaptive gamma and symbolic context"""

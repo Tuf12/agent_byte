@@ -21,7 +21,7 @@ class ModularPongGame:
         self.env = PongEnvironment()
         
         # Create match logger
-        self.logger = MatchLogger('modular_adaptive_knowledge_enhanced_agent_byte_logs.json')
+        self.logger = MatchLogger('agent_matches.json')
         
         # Create agent with enhanced modular + adaptive learning + knowledge system
         self.agent = AgentByte(state_size=14, action_size=3, logger=self.logger)
@@ -48,7 +48,8 @@ class ModularPongGame:
         self.auto_save_interval = 3600
         
         # Try to load existing brain
-        brain_loaded = self.agent.load_brain('modular_adaptive_knowledge_enhanced_agent_byte_v1_2.json')
+        brain_loaded = self.agent.load_brain('agent_brain.json')
+
         if not brain_loaded:
             print("🆕 Starting with fresh Agent Byte brain")
         
@@ -258,14 +259,14 @@ class ModularPongGame:
         game_state = self.env.get_game_state()
         
         # Add agent stats
-        agent_stats = self.agent.get_stats()
+        agent_byte_stats = self.agent.get_stats()
         
         # Add Pong-specific stats
         pong_stats = self.env.get_pong_stats()
-        agent_stats.update(pong_stats)
+        agent_byte_stats.update(pong_stats)
         
         # Add enhanced environment integration stats
-        agent_stats.update({
+        agent_byte_stats.update({
             'demo_learning_enabled': self.demo_learning_enabled,
             'demo_recording_active': self.demo_recording_active,
             'knowledge_system_enabled': self.knowledge_system_enabled,
@@ -292,7 +293,7 @@ class ModularPongGame:
             }
         })
         
-        game_state['ai_stats'] = agent_stats
+        game_state['ai_stats'] = agent_byte_stats
         
         return game_state
     
@@ -779,4 +780,4 @@ if __name__ == '__main__':
             print("   ⚠️ PARTIAL MODULAR INTEGRATION")
         print("="*80)
     
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True, allow_unsafe_werkzeug=True)
