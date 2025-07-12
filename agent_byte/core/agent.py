@@ -34,7 +34,8 @@ class AgentByte:
     def __init__(self,
                  agent_id: str,
                  storage: Optional[Storage] = None,
-                 config: Optional[AgentConfig] = None):
+                 config: Optional[AgentConfig] = None,
+                 storage_backend: str = "json"):
         """
         Initialize Agent Byte.
 
@@ -42,9 +43,20 @@ class AgentByte:
             agent_id: Unique identifier for this agent
             storage: Storage backend (defaults to JsonNumpyStorage)
             config: Agent configuration (defaults to AgentConfig)
+            storage_backend: If storage is None, which backend to use ("json" or "vectordb")
         """
         self.agent_id = agent_id
-        self.storage = storage or JsonNumpyStorage(f"./agent_data/{agent_id}")
+
+        # Initialize storage with appropriate backend
+        if storage is None:
+            if storage_backend == "vectordb":
+                from ..storage.vector_db_storage import VectorDBStorage
+                self.storage = VectorDBStorage(f"./agent_data_vectordb/{agent_id}")
+            else:
+                self.storage = JsonNumpyStorage(f"./agent_data/{agent_id}")
+        else:
+            self.storage = storage
+
         self.config = config or AgentConfig()
 
         # Set up logging

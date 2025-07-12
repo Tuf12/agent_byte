@@ -12,10 +12,12 @@ msgpack>=1.0.0
 tqdm>=4.65.0
 python-dateutil>=2.8.0
 
-# Optional: Vector database support (uncomment as needed)
-# faiss-cpu>=1.7.0  # For CPU-only systems
-# faiss-gpu>=1.7.0  # For GPU systems
-# chromadb>=0.4.0
+# Vector database support
+# FAISS - Choose ONE based on your system:
+# faiss-cpu>=1.7.4  # For CPU-only systems
+faiss-gpu-cu12>=1.7.4  # For GPU systems with CUDA 12.x (provides 'faiss' module)
+# faiss-gpu-cu11>=1.7.4  # For GPU systems with CUDA 11.x
+chromadb>=0.4.0
 
 # Optional: Visualization (uncomment if needed)
 matplotlib>=3.5.0
@@ -31,7 +33,8 @@ mypy>=0.990
 # For autoencoders in Sprint 2
 # scikit-learn>=1.2.0
 
-# Example dependencies (optional)
-setuptools~=80.9.0
-analysis~=0.1.7
-base~=0.0.0
+# Note: These appear to be internal packages or typos - commenting out
+# setuptools~=80.9.0  # Usually comes with Python
+# analysis~=0.1.7  # Not a known package
+# base~=0.0.0  # Not a known package
+# autoencoder~=0.0.8  # Not a known package

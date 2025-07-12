@@ -1,5 +1,3 @@
-
-
 """
 JSON + Numpy storage implementation for Agent Byte.
 
@@ -14,10 +12,10 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import shutil
 from datetime import datetime
+import os
 
 from .base import StorageBase
 from ..analysis.autoencoder import VariationalAutoencoder
-
 
 
 class JsonNumpyStorage(StorageBase):
@@ -36,7 +34,8 @@ class JsonNumpyStorage(StorageBase):
     │       │       └── autoencoder.json
     │       └── experiences/
     │           ├── vectors.npy
-    │           └── metadata.json
+    │           ├── metadata.json
+    │           └── index.json
     """
 
     def __init__(self, base_path: str = "./agent_data", config: Optional[Dict[str, Any]] = None):
@@ -53,9 +52,25 @@ class JsonNumpyStorage(StorageBase):
 
         # Experience vectors stored in memory for fast similarity search
         self._experience_vectors: Dict[str, List[Dict[str, Any]]] = {}
+
+        # Lazy loading configuration
+        self.lazy_loading_enabled = config.get('lazy_loading', True) if config else True
+        self.memory_limit = config.get('memory_limit', 10000) if config else 10000
+        self.batch_size = config.get('batch_size', 1000) if config else 1000
+
+        # Memory-mapped arrays for large datasets
+        self._mmap_arrays: Dict[str, np.memmap] = {}
+
+        # Batch write buffers
+        self._write_buffers: Dict[str, List[Dict[str, Any]]] = {}
+        self._buffer_size = config.get('buffer_size', 100) if config else 100
+
+        # Experience indices for fast lookup
+        self._experience_indices: Dict[str, Dict[str, int]] = {}
+
         self._load_experience_indices()
 
-        self.logger.info(f"Initialized JsonNumpyStorage at {self.base_path}")
+        self.logger.info(f"Initialized JsonNumpyStorage at {self.base_path} (lazy_loading={self.lazy_loading_enabled})")
 
     def _get_agent_path(self, agent_id: str) -> Path:
         """Get path for agent directory."""
@@ -243,33 +258,28 @@ class JsonNumpyStorage(StorageBase):
             return []
 
     def save_experience_vector(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
-        """Save experience vector for similarity search."""
+        """Save experience vector for similarity search with optimized batch writing."""
         try:
             if not self._validate_vector(vector):
                 return False
 
-            # Ensure experiences directory exists
-            exp_path = self._get_agent_path(agent_id) / "experiences"
-            self._ensure_directory(exp_path)
+            # Add to write buffer
+            if agent_id not in self._write_buffers:
+                self._write_buffers[agent_id] = []
 
-            # Load existing vectors and metadata
-            vectors, metadatas = self._load_experience_data(agent_id)
-
-            # Add new experience
+            # Add timestamp and index
             metadata['timestamp'] = datetime.now().isoformat()
-            metadata['vector_index'] = len(vectors)
 
-            vectors.append(vector)
-            metadatas.append(metadata)
+            self._write_buffers[agent_id].append({
+                'vector': vector.copy(),
+                'metadata': metadata.copy()
+            })
 
-            # Save vectors
-            np.save(exp_path / "vectors.npy", np.array(vectors))
+            # Flush buffer if it reaches the size limit
+            if len(self._write_buffers[agent_id]) >= self._buffer_size:
+                self._flush_write_buffer(agent_id)
 
-            # Save metadata
-            with open(exp_path / "metadata.json", 'w') as f:
-                json.dump(metadatas, f, indent=2, default=str)
-
-            # Update in-memory index
+            # Update in-memory index for immediate searches
             if agent_id not in self._experience_vectors:
                 self._experience_vectors[agent_id] = []
 
@@ -281,6 +291,7 @@ class JsonNumpyStorage(StorageBase):
             # Limit in-memory vectors
             max_vectors = self.config.get('max_vectors_in_memory', 10000)
             if len(self._experience_vectors[agent_id]) > max_vectors:
+                # Keep the most recent vectors in memory
                 self._experience_vectors[agent_id] = self._experience_vectors[agent_id][-max_vectors:]
 
             return True
@@ -289,40 +300,141 @@ class JsonNumpyStorage(StorageBase):
             self.logger.error(f"Failed to save experience vector: {str(e)}")
             return False
 
+    def _flush_write_buffer(self, agent_id: str):
+        """Flush write buffer to disk using optimized batch writing."""
+        if agent_id not in self._write_buffers or not self._write_buffers[agent_id]:
+            return
+
+        try:
+            # Ensure experiences directory exists
+            exp_path = self._get_agent_path(agent_id) / "experiences"
+            self._ensure_directory(exp_path)
+
+            # Load existing data using memory mapping if available
+            vectors_file = exp_path / "vectors.npy"
+            metadata_file = exp_path / "metadata.json"
+            index_file = exp_path / "index.json"
+
+            # Get current index
+            if agent_id not in self._experience_indices:
+                self._experience_indices[agent_id] = self._load_experience_index(agent_id)
+
+            current_index = self._experience_indices[agent_id].get('count', 0)
+
+            # Prepare batch data
+            batch = self._write_buffers[agent_id]
+            new_vectors = np.array([item['vector'] for item in batch])
+            new_metadata = [item['metadata'] for item in batch]
+
+            # Update metadata with indices
+            for i, meta in enumerate(new_metadata):
+                meta['vector_index'] = current_index + i
+
+            if vectors_file.exists() and self.lazy_loading_enabled:
+                # Use memory mapping for efficient append
+                existing_shape = np.load(vectors_file, mmap_mode='r').shape
+                total_vectors = existing_shape[0] + len(batch)
+
+                # Create new memory-mapped array
+                new_mmap = np.memmap(vectors_file.with_suffix('.tmp'),
+                                     dtype='float32',
+                                     mode='w+',
+                                     shape=(total_vectors, 256))
+
+                # Copy existing data
+                existing_mmap = np.memmap(vectors_file, dtype='float32', mode='r', shape=existing_shape)
+                new_mmap[:existing_shape[0]] = existing_mmap
+                new_mmap[existing_shape[0]:] = new_vectors
+
+                # Flush and close
+                del existing_mmap
+                del new_mmap
+
+                # Replace old file
+                vectors_file.with_suffix('.tmp').replace(vectors_file)
+            else:
+                # Standard append for smaller datasets
+                if vectors_file.exists():
+                    existing = np.load(vectors_file)
+                    combined = np.vstack([existing, new_vectors])
+                    np.save(vectors_file, combined)
+                else:
+                    np.save(vectors_file, new_vectors)
+
+            # Append metadata efficiently
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    existing_metadata = json.load(f)
+                existing_metadata.extend(new_metadata)
+            else:
+                existing_metadata = new_metadata
+
+            # Save metadata
+            with open(metadata_file, 'w') as f:
+                json.dump(existing_metadata, f, indent=2, default=str)
+
+            # Update index
+            self._experience_indices[agent_id]['count'] = current_index + len(batch)
+            with open(index_file, 'w') as f:
+                json.dump(self._experience_indices[agent_id], f)
+
+            # Clear buffer
+            self._write_buffers[agent_id].clear()
+
+        except Exception as e:
+            self.logger.error(f"Failed to flush write buffer: {str(e)}")
+
     def search_similar_experiences(self, agent_id: str, query_vector: np.ndarray, k: int = 5) -> List[Dict[str, Any]]:
-        """Search for similar experiences using cosine similarity."""
+        """Search for similar experiences using optimized cosine similarity."""
         try:
             if not self._validate_vector(query_vector):
                 return []
 
+            # Ensure write buffer is flushed
+            if agent_id in self._write_buffers and self._write_buffers[agent_id]:
+                self._flush_write_buffer(agent_id)
+
             # Get experiences for this agent
             if agent_id not in self._experience_vectors:
-                # Try to load from disk
+                # Try to load from disk with lazy loading
                 self._load_agent_experiences(agent_id)
 
             if agent_id not in self._experience_vectors or not self._experience_vectors[agent_id]:
                 return []
 
-            # Calculate similarities
-            similarities = []
+            # Normalize query vector for better similarity scores
             query_norm = np.linalg.norm(query_vector)
+            if query_norm > 0:
+                query_vector_normalized = query_vector / query_norm
+            else:
+                return []
 
-            for exp in self._experience_vectors[agent_id]:
-                exp_vector = exp['vector']
-                exp_norm = np.linalg.norm(exp_vector)
+            # Vectorized similarity calculation
+            vectors = np.array([exp['vector'] for exp in self._experience_vectors[agent_id]])
+            metadatas = [exp['metadata'] for exp in self._experience_vectors[agent_id]]
 
-                if query_norm > 0 and exp_norm > 0:
-                    # Cosine similarity
-                    similarity = np.dot(query_vector, exp_vector) / (query_norm * exp_norm)
-                    similarities.append({
-                        'similarity': float(similarity),
-                        'metadata': exp['metadata'],
-                        'vector': exp_vector
-                    })
+            # Normalize all vectors
+            norms = np.linalg.norm(vectors, axis=1)
+            valid_mask = norms > 0
+            vectors[valid_mask] = vectors[valid_mask] / norms[valid_mask, np.newaxis]
 
-            # Sort by similarity and return top k
-            similarities.sort(key=lambda x: x['similarity'], reverse=True)
-            return similarities[:k]
+            # Compute similarities in batch
+            similarities = np.dot(vectors, query_vector_normalized)
+
+            # Get top k indices
+            top_k_indices = np.argpartition(similarities, -min(k, len(similarities)))[-min(k, len(similarities)):]
+            top_k_indices = top_k_indices[np.argsort(similarities[top_k_indices])[::-1]]
+
+            # Build results
+            results = []
+            for idx in top_k_indices:
+                results.append({
+                    'similarity': float(similarities[idx]),
+                    'metadata': metadatas[idx],
+                    'vector': vectors[idx] * norms[idx]  # Denormalize if needed
+                })
+
+            return results
 
         except Exception as e:
             self.logger.error(f"Failed to search experiences: {str(e)}")
@@ -375,7 +487,7 @@ class JsonNumpyStorage(StorageBase):
             return False
 
     def _load_experience_data(self, agent_id: str) -> tuple:
-        """Load experience vectors and metadata from disk."""
+        """Load experience vectors and metadata from disk with lazy loading."""
         exp_path = self._get_agent_path(agent_id) / "experiences"
 
         vectors = []
@@ -384,7 +496,12 @@ class JsonNumpyStorage(StorageBase):
         # Load vectors
         vectors_file = exp_path / "vectors.npy"
         if vectors_file.exists():
-            vectors = np.load(vectors_file).tolist()
+            if self.lazy_loading_enabled and os.path.getsize(vectors_file) > 100 * 1024 * 1024:  # 100MB
+                # Use memory mapping for large files
+                self._mmap_arrays[agent_id] = np.memmap(vectors_file, dtype='float32', mode='r')
+                vectors = self._mmap_arrays[agent_id]
+            else:
+                vectors = np.load(vectors_file)
 
         # Load metadata
         metadata_file = exp_path / "metadata.json"
@@ -395,18 +512,31 @@ class JsonNumpyStorage(StorageBase):
         return vectors, metadatas
 
     def _load_agent_experiences(self, agent_id: str) -> None:
-        """Load agent experiences into memory."""
+        """Load agent experiences into memory with lazy loading support."""
         try:
             vectors, metadatas = self._load_experience_data(agent_id)
 
             if agent_id not in self._experience_vectors:
                 self._experience_vectors[agent_id] = []
 
-            for i, (vector, metadata) in enumerate(zip(vectors, metadatas)):
-                self._experience_vectors[agent_id].append({
-                    'vector': np.array(vector),
-                    'metadata': metadata
-                })
+            # For lazy loading, only load the most recent experiences
+            if self.lazy_loading_enabled and len(vectors) > self.memory_limit:
+                start_idx = len(vectors) - self.memory_limit
+                vectors_subset = vectors[start_idx:]
+                metadatas_subset = metadatas[start_idx:]
+
+                for i, (vector, metadata) in enumerate(zip(vectors_subset, metadatas_subset)):
+                    self._experience_vectors[agent_id].append({
+                        'vector': np.array(vector),
+                        'metadata': metadata
+                    })
+            else:
+                # Load all if small enough
+                for i, (vector, metadata) in enumerate(zip(vectors, metadatas)):
+                    self._experience_vectors[agent_id].append({
+                        'vector': np.array(vector),
+                        'metadata': metadata
+                    })
 
         except Exception as e:
             self.logger.error(f"Failed to load agent experiences: {str(e)}")
@@ -418,15 +548,23 @@ class JsonNumpyStorage(StorageBase):
             if not agents_dir.exists():
                 return
 
-            # Don't load all vectors on startup - load on demand
-            #  register which agents exist
+            # Load indices for each agent
             for agent_dir in agents_dir.iterdir():
                 if agent_dir.is_dir():
                     agent_id = agent_dir.name
                     self._experience_vectors[agent_id] = []
+                    self._experience_indices[agent_id] = self._load_experience_index(agent_id)
 
         except Exception as e:
             self.logger.error(f"Failed to load experience indices: {str(e)}")
+
+    def _load_experience_index(self, agent_id: str) -> Dict[str, Any]:
+        """Load experience index for an agent."""
+        index_file = self._get_agent_path(agent_id) / "experiences" / "index.json"
+        if index_file.exists():
+            with open(index_file, 'r') as f:
+                return json.load(f)
+        return {'count': 0}
 
     def _get_all_agent_ids(self) -> List[str]:
         """Get all agent IDs in storage."""
@@ -452,6 +590,15 @@ class JsonNumpyStorage(StorageBase):
             if agent_id in self._experience_vectors:
                 del self._experience_vectors[agent_id]
 
+            if agent_id in self._write_buffers:
+                del self._write_buffers[agent_id]
+
+            if agent_id in self._experience_indices:
+                del self._experience_indices[agent_id]
+
+            if agent_id in self._mmap_arrays:
+                del self._mmap_arrays[agent_id]
+
             # Clear cache entries for this agent
             cache_keys_to_remove = [k for k in self._cache.keys() if agent_id in k]
             for key in cache_keys_to_remove:
@@ -463,3 +610,16 @@ class JsonNumpyStorage(StorageBase):
         except Exception as e:
             self.logger.error(f"Failed to delete agent: {str(e)}")
             return False
+
+    def close(self):
+        """Clean up storage resources."""
+        # Flush all write buffers
+        for agent_id in list(self._write_buffers.keys()):
+            if self._write_buffers[agent_id]:
+                self._flush_write_buffer(agent_id)
+
+        # Clean up memory-mapped arrays
+        self._mmap_arrays.clear()
+
+        # Call parent cleanup
+        super().close()

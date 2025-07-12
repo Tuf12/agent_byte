@@ -12,7 +12,9 @@ import logging
 from datetime import datetime
 
 
-class StorageBase(ABC):
+from ..core.interfaces import Storage
+
+class StorageBase(Storage):
     """
     Base class for all storage implementations.
 

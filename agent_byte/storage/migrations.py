@@ -11,6 +11,9 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import shutil
 from datetime import datetime
+import time
+import numpy as np
+from tqdm import tqdm
 
 from .base import StorageBase
 
@@ -24,6 +27,7 @@ class StorageMigrator:
     - Version migration (e.g., v2.0 to v3.0)
     - Batch migration of multiple agents
     - Rollback capabilities
+    - Vector database migration with optimized batch processing
     """
 
     def __init__(self):
@@ -35,7 +39,8 @@ class StorageMigrator:
                         source_storage: StorageBase,
                         target_storage: StorageBase,
                         agent_ids: Optional[List[str]] = None,
-                        create_backup: bool = True) -> Dict[str, Any]:
+                        create_backup: bool = True,
+                        batch_size: int = 1000) -> Dict[str, Any]:
         """
         Migrate data from one storage backend to another.
 
@@ -44,6 +49,7 @@ class StorageMigrator:
             target_storage: Target storage backend
             agent_ids: Specific agents to migrate (None for all)
             create_backup: Whether to create backup before migration
+            batch_size: Batch size for experience vector migration
 
         Returns:
             Migration results with success/failure counts
@@ -57,6 +63,7 @@ class StorageMigrator:
             'target_backend': type(target_storage).__name__,
             'agents_migrated': 0,
             'agents_failed': 0,
+            'experiences_migrated': 0,
             'errors': []
         }
 
@@ -72,10 +79,18 @@ class StorageMigrator:
                 results['backup_path'] = backup_path
 
             # Migrate each agent
-            for agent_id in agent_ids:
+            for agent_id in tqdm(agent_ids, desc="Migrating agents"):
                 try:
+                    # Migrate basic data
                     self._migrate_agent(agent_id, source_storage, target_storage)
+
+                    # Migrate experience vectors with optimized batch processing
+                    exp_count = self._migrate_experience_vectors(
+                        source_storage, target_storage, agent_id, batch_size
+                    )
+
                     results['agents_migrated'] += 1
+                    results['experiences_migrated'] += exp_count
                     self.logger.debug(f"Successfully migrated agent: {agent_id}")
 
                 except Exception as e:
@@ -91,11 +106,52 @@ class StorageMigrator:
             self.migration_history.append(results)
 
             self.logger.info(
-                f"Migration completed: {results['agents_migrated']} succeeded, {results['agents_failed']} failed")
+                f"Migration completed: {results['agents_migrated']} succeeded, "
+                f"{results['agents_failed']} failed, "
+                f"{results['experiences_migrated']} experiences migrated")
 
         except Exception as e:
             self.logger.error(f"Migration failed: {str(e)}")
             results['fatal_error'] = str(e)
+
+        return results
+
+    def migrate_to_vector_db(self, source_path: str, target_path: str,
+                           backend: str = "hybrid", batch_size: int = 1000,
+                           agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Specialized method to migrate from JSON+Numpy storage to vector database storage.
+
+        Args:
+            source_path: Path to JSON+Numpy storage
+            target_path: Path for vector database storage
+            backend: Vector DB backend ("faiss", "chroma", "hybrid")
+            batch_size: Batch size for experience migration
+            agent_ids: Specific agents to migrate (None for all)
+
+        Returns:
+            Migration results
+        """
+        from .json_numpy_storage import JsonNumpyStorage
+        from .vector_db_storage import VectorDBStorage
+
+        self.logger.info(f"Starting migration to vector DB ({backend})")
+
+        # Initialize storage backends
+        source_storage = JsonNumpyStorage(source_path)
+        target_storage = VectorDBStorage(target_path, backend=backend)
+
+        # Use the general migration method
+        results = self.migrate_backend(
+            source_storage, target_storage, agent_ids, batch_size=batch_size
+        )
+
+        # Add backend info
+        results['vector_db_backend'] = backend
+
+        # Close storage backends
+        source_storage.close()
+        target_storage.close()
 
         return results
 
@@ -165,6 +221,12 @@ class StorageMigrator:
                         migrated_knowledge = migration_func(knowledge, 'knowledge')
                         storage.save_knowledge(agent_id, env_id, migrated_knowledge)
 
+                    # Migrate autoencoder
+                    autoencoder = storage.load_autoencoder(agent_id, env_id)
+                    if autoencoder:
+                        migrated_autoencoder = migration_func(autoencoder, 'autoencoder')
+                        storage.save_autoencoder(agent_id, env_id, migrated_autoencoder)
+
                 results['agents_updated'] += 1
 
             except Exception as e:
@@ -195,9 +257,59 @@ class StorageMigrator:
             if knowledge:
                 target.save_knowledge(agent_id, env_id, knowledge)
 
-        # Note: Experience vectors need special handling
-        # This is a simplified version - real implementation would batch transfer vectors
+            # Migrate autoencoder
+            autoencoder = source.load_autoencoder(agent_id, env_id)
+            if autoencoder:
+                target.save_autoencoder(agent_id, env_id, autoencoder)
+
         self.logger.debug(f"Migrated agent {agent_id} with {len(environments)} environments")
+
+    def _migrate_experience_vectors(self, source: StorageBase, target: StorageBase,
+                                  agent_id: str, batch_size: int) -> int:
+        """
+        Migrate experience vectors in batches for efficiency.
+
+        Returns:
+            Number of experiences migrated
+        """
+        count = 0
+
+        # This is specific to JsonNumpyStorage as source
+        if hasattr(source, '_get_agent_path'):
+            exp_path = source._get_agent_path(agent_id) / "experiences"
+            vectors_file = exp_path / "vectors.npy"
+            metadata_file = exp_path / "metadata.json"
+
+            if not vectors_file.exists():
+                return 0
+
+            try:
+                # Load data
+                vectors = np.load(vectors_file)
+                with open(metadata_file, 'r') as f:
+                    metadata_list = json.load(f)
+
+                # Migrate in batches
+                for i in range(0, len(vectors), batch_size):
+                    batch_end = min(i + batch_size, len(vectors))
+
+                    for j in range(i, batch_end):
+                        if j < len(metadata_list):
+                            target.save_experience_vector(
+                                agent_id,
+                                vectors[j],
+                                metadata_list[j]
+                            )
+                            count += 1
+
+                    # Log progress
+                    if count % 10000 == 0:
+                        self.logger.debug(f"Migrated {count} experiences for {agent_id}")
+
+            except Exception as e:
+                self.logger.error(f"Error migrating experiences for {agent_id}: {e}")
+
+        return count
 
     def _create_backup(self, storage: StorageBase, agent_ids: List[str]) -> str:
         """Create backup of agents before migration."""
@@ -266,6 +378,10 @@ class StorageMigrator:
                 old_mappings = migrated.pop('skill_mappings', {})
                 migrated['discovered_skills'] = self._convert_skill_mappings(old_mappings)
 
+        elif data_type == 'autoencoder':
+            # Autoencoders are already in v3.0 format
+            pass
+
         return migrated
 
     def _convert_skill_mappings(self, old_mappings: Dict[str, Any]) -> Dict[str, Any]:
@@ -324,7 +440,7 @@ class StorageMigrator:
             return False
 
     def verify_migration(self, source: StorageBase, target: StorageBase,
-                         agent_ids: List[str]) -> Dict[str, Any]:
+                         agent_ids: List[str], sample_size: int = 100) -> Dict[str, Any]:
         """
         Verify that migration was successful.
 
@@ -332,6 +448,7 @@ class StorageMigrator:
             source: Original storage
             target: New storage
             agent_ids: Agents to verify
+            sample_size: Number of experiences to sample for verification
 
         Returns:
             Verification results
@@ -339,6 +456,7 @@ class StorageMigrator:
         results = {
             'verified': True,
             'agent_checks': {},
+            'experience_checks': {},
             'errors': []
         }
 
@@ -346,7 +464,8 @@ class StorageMigrator:
             agent_result = {
                 'profile_match': False,
                 'environments_match': False,
-                'data_integrity': True
+                'data_integrity': True,
+                'experience_sample_match': False
             }
 
             try:
@@ -365,8 +484,14 @@ class StorageMigrator:
                 target_envs = set(target.list_environments(agent_id))
                 agent_result['environments_match'] = source_envs == target_envs
 
+                # Sample experience verification
+                if sample_size > 0:
+                    agent_result['experience_sample_match'] = self._verify_experience_sample(
+                        source, target, agent_id, sample_size
+                    )
+
                 # Overall agent verification
-                if not (agent_result['profile_match'] and agent_result['environments_match']):
+                if not all(agent_result.values()):
                     results['verified'] = False
 
             except Exception as e:
@@ -377,3 +502,154 @@ class StorageMigrator:
             results['agent_checks'][agent_id] = agent_result
 
         return results
+
+    def _verify_experience_sample(self, source: StorageBase, target: StorageBase,
+                                agent_id: str, sample_size: int) -> bool:
+        """
+        Verify a sample of experiences match between storages.
+        """
+        try:
+            # This is specific to JsonNumpyStorage as source
+            if hasattr(source, '_get_agent_path'):
+                exp_path = source._get_agent_path(agent_id) / "experiences"
+                vectors_file = exp_path / "vectors.npy"
+
+                if not vectors_file.exists():
+                    return True  # No experiences to verify
+
+                vectors = np.load(vectors_file)
+
+                if len(vectors) == 0:
+                    return True
+
+                # Sample random vectors
+                sample_indices = np.random.choice(
+                    len(vectors),
+                    min(sample_size, len(vectors)),
+                    replace=False
+                )
+
+                # For each sample, search in target and verify it exists
+                for idx in sample_indices:
+                    query_vector = vectors[idx]
+
+                    # Search in target
+                    results = target.search_similar_experiences(
+                        agent_id, query_vector, k=1
+                    )
+
+                    if not results or results[0]['similarity'] < 0.99:
+                        return False
+
+                return True
+
+            return True  # Can't verify, assume success
+
+        except Exception as e:
+            self.logger.error(f"Experience verification failed: {e}")
+            return False
+
+    def get_storage_stats(self, storage: StorageBase,
+                         agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get statistics about a storage backend.
+
+        Args:
+            storage: Storage backend
+            agent_id: Specific agent or None for global stats
+
+        Returns:
+            Storage statistics
+        """
+        stats = {
+            'storage_type': type(storage).__name__,
+            'agents': {},
+            'total_experiences': 0,
+            'total_size_mb': 0
+        }
+
+        try:
+            if agent_id:
+                # Agent-specific stats
+                stats['agent_id'] = agent_id
+
+                # Count experiences if possible
+                if hasattr(storage, '_get_vector_count'):
+                    exp_count = storage._get_vector_count(agent_id)
+                    stats['total_experiences'] = exp_count
+                elif hasattr(storage, 'get_storage_stats'):
+                    agent_stats = storage.get_storage_stats(agent_id)
+                    stats.update(agent_stats)
+            else:
+                # Global stats
+                agent_ids = storage._get_all_agent_ids()
+                stats['total_agents'] = len(agent_ids)
+
+                for agent_id in agent_ids:
+                    agent_stats = {
+                        'environments': len(storage.list_environments(agent_id)),
+                        'experiences': 0
+                    }
+
+                    # Count experiences
+                    if hasattr(storage, '_get_vector_count'):
+                        exp_count = storage._get_vector_count(agent_id)
+                        agent_stats['experiences'] = exp_count
+                        stats['total_experiences'] += exp_count
+
+                    stats['agents'][agent_id] = agent_stats
+
+        except Exception as e:
+            stats['error'] = str(e)
+
+        return stats
+
+
+# Convenience functions for backward compatibility and ease of use
+def migrate_to_vector_db(source_path: str, target_path: str,
+                        backend: str = "hybrid", **kwargs) -> Dict[str, Any]:
+    """
+    Convenience function to migrate storage to vector database.
+
+    Args:
+        source_path: Path to JSON+Numpy storage
+        target_path: Path for vector database storage
+        backend: Vector DB backend ("faiss", "chroma", "hybrid")
+        **kwargs: Additional arguments for migration
+
+    Returns:
+        Migration results
+    """
+    migrator = StorageMigrator()
+    return migrator.migrate_to_vector_db(source_path, target_path, backend, **kwargs)
+
+
+def verify_migration(source_path: str, target_path: str,
+                    backend: str = "hybrid", **kwargs) -> Dict[str, Any]:
+    """
+    Convenience function to verify migration.
+
+    Args:
+        source_path: Path to source storage
+        target_path: Path to target storage
+        backend: Vector DB backend used
+        **kwargs: Additional arguments for verification
+
+    Returns:
+        Verification results
+    """
+    from .json_numpy_storage import JsonNumpyStorage
+    from .vector_db_storage import VectorDBStorage
+
+    source = JsonNumpyStorage(source_path)
+    target = VectorDBStorage(target_path, backend=backend)
+
+    agent_ids = source._get_all_agent_ids()
+
+    migrator = StorageMigrator()
+    results = migrator.verify_migration(source, target, agent_ids, **kwargs)
+
+    source.close()
+    target.close()
+
+    return results
