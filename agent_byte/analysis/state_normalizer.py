@@ -1,13 +1,17 @@
 """
-Universal state normalization system.
+Universal state normalization system with autoencoder support.
 
 This module handles conversion of any environment state to the standardized
 256-dimension format, enabling transfer learning across diverse environments.
+Now supports both linear projection and autoencoder-based compression.
 """
 
 import numpy as np
 from typing import Dict, Any, Optional, List
 import logging
+from collections import deque
+
+from .autoencoder import AutoencoderTrainer, VariationalAutoencoder
 
 
 class StateNormalizer:
@@ -15,21 +19,39 @@ class StateNormalizer:
     Handles conversion of any environment state to standardized 256-dimension format.
 
     This is the core system that enables transfer learning by ensuring all environments
-    speak the same "language" to the neural network.
+    speak the same "language" to the neural network. Now supports autoencoder-based
+    compression for better representation learning.
     """
 
-    def __init__(self, target_dim: int = 256):
+    def __init__(self, target_dim: int = 256, use_autoencoder: bool = True):
         """
         Initialize the state normalizer.
 
         Args:
             target_dim: Target dimension for normalized states (default: 256)
+            use_autoencoder: Whether to use autoencoder compression when available
         """
         self.target_dim = target_dim
+        self.use_autoencoder = use_autoencoder
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # State statistics for adaptive normalization
         self.state_stats = {}
+
+        # State history for autoencoder training
+        self.state_history = {}
+        self.history_size = 5000
+
+        # Autoencoder trainer
+        if self.use_autoencoder:
+            self.autoencoder_trainer = AutoencoderTrainer(latent_dim=target_dim)
+        else:
+            self.autoencoder_trainer = None
+
+        # Normalization methods used per environment
+        self.normalization_methods = {}
+
+        self.logger.info(f"Initialized StateNormalizer (autoencoder={'enabled' if use_autoencoder else 'disabled'})")
 
     def normalize(self, raw_state: np.ndarray, env_id: str,
                   metadata: Optional[Dict[str, Any]] = None) -> np.ndarray:
@@ -52,11 +74,48 @@ class StateNormalizer:
         if raw_state.ndim > 1:
             raw_state = raw_state.flatten()
 
+        # Update statistics and history
+        self._update_statistics(env_id, raw_state)
+        self._update_history(env_id, raw_state)
+
+        # Try autoencoder normalization first if enabled
+        if self.use_autoencoder:
+            autoencoder = self._get_autoencoder(env_id)
+            if autoencoder is not None:
+                try:
+                    normalized = autoencoder.compress(raw_state)
+                    self.normalization_methods[env_id] = 'autoencoder'
+
+                    # Ensure correct dimensions
+                    if len(normalized) != self.target_dim:
+                        self.logger.warning(
+                            f"Autoencoder output dimension mismatch for {env_id}: "
+                            f"{len(normalized)} != {self.target_dim}"
+                        )
+                        normalized = self._fallback_normalization(raw_state, env_id, metadata)
+
+                except Exception as e:
+                    self.logger.error(f"Autoencoder compression failed for {env_id}: {e}")
+                    normalized = self._fallback_normalization(raw_state, env_id, metadata)
+            else:
+                # No autoencoder available yet
+                normalized = self._fallback_normalization(raw_state, env_id, metadata)
+        else:
+            # Autoencoder disabled
+            normalized = self._fallback_normalization(raw_state, env_id, metadata)
+
+        # Ensure all values are in reasonable range
+        normalized = np.clip(normalized, -10, 10)
+
+        return normalized
+
+    def _fallback_normalization(self, raw_state: np.ndarray, env_id: str,
+                               metadata: Optional[Dict[str, Any]] = None) -> np.ndarray:
+        """
+        Fallback to linear normalization when autoencoder is not available.
+        """
         # Initialize normalized state
         normalized = np.zeros(self.target_dim, dtype=np.float32)
-
-        # Update statistics
-        self._update_statistics(env_id, raw_state)
 
         # Apply normalization strategy based on state size
         if len(raw_state) >= self.target_dim:
@@ -66,15 +125,39 @@ class StateNormalizer:
             # State smaller than target - use intelligent padding
             normalized = self._expand_dimensions(raw_state, metadata)
 
-        # Ensure all values are in reasonable range
-        normalized = np.clip(normalized, -10, 10)
-
+        self.normalization_methods[env_id] = 'linear'
         return normalized
+
+    def _get_autoencoder(self, env_id: str) -> Optional[VariationalAutoencoder]:
+        """
+        Get or train autoencoder for environment.
+        """
+        if self.autoencoder_trainer is None:
+            return None
+
+        # Check if we have enough data to train
+        if env_id in self.state_history and len(self.state_history[env_id]) >= 1000:
+            # Convert history to numpy array
+            states = np.array(list(self.state_history[env_id]))
+
+            # Get or train autoencoder
+            return self.autoencoder_trainer.get_or_train_autoencoder(env_id, states)
+
+        return None
+
+    def _update_history(self, env_id: str, state: np.ndarray):
+        """
+        Update state history for autoencoder training.
+        """
+        if env_id not in self.state_history:
+            self.state_history[env_id] = deque(maxlen=self.history_size)
+
+        self.state_history[env_id].append(state.copy())
 
     def _reduce_dimensions(self, state: np.ndarray,
                            metadata: Optional[Dict[str, Any]] = None) -> np.ndarray:
         """
-        Reduce high-dimensional state to target dimensions.
+        Reduce high-dimensional state to focus on dimensions.
 
         Uses intelligent sampling based on metadata if available.
         """
@@ -97,14 +180,14 @@ class StateNormalizer:
     def _expand_dimensions(self, state: np.ndarray,
                            metadata: Optional[Dict[str, Any]] = None) -> np.ndarray:
         """
-        Expand low-dimensional state to target dimensions.
+        Expand low-dimensional state to focus on dimensions.
 
         Uses intelligent padding with positional encoding.
         """
         result = np.zeros(self.target_dim)
         state_len = len(state)
 
-        # Copy original state
+        # Copy the original state
         result[:state_len] = state
 
         # Apply positional encoding to unused dimensions
@@ -112,18 +195,19 @@ class StateNormalizer:
             # Sinusoidal positional encoding
             pos_encoding = np.sin(i * 0.01) * 0.1 + np.cos(i * 0.005) * 0.05
 
-            # Add some information about original state size
+            # Add some information about the original state size
             size_encoding = np.sin(state_len * 0.1) * 0.05
 
             result[i] = pos_encoding + size_encoding
 
         # If metadata provides state structure, use it
         if metadata:
-            self._apply_semantic_padding(result, state, metadata)
+            StateNormalizer._apply_semantic_padding(result, state, metadata)
 
         return result
 
-    def _apply_semantic_padding(self, result: np.ndarray, original_state: np.ndarray,
+    @staticmethod
+    def _apply_semantic_padding(result: np.ndarray, original_state: np.ndarray,
                                 metadata: Dict[str, Any]) -> None:
         """
         Apply semantic padding based on state metadata.
@@ -217,12 +301,98 @@ class StateNormalizer:
             'count': stats['count']
         }
 
+    def get_normalization_info(self, env_id: str) -> Dict[str, Any]:
+        """
+        Get information about normalization method used for an environment.
+
+        Args:
+            env_id: Environment identifier
+
+        Returns:
+            Normalization information
+        """
+        info = {
+            'method': self.normalization_methods.get(env_id, 'unknown'),
+            'statistics': self.get_statistics(env_id),
+            'state_history_size': len(self.state_history.get(env_id, [])),
+            'has_autoencoder': False,
+            'autoencoder_metrics': None
+        }
+
+        if self.use_autoencoder and self.autoencoder_trainer:
+            autoencoder = self.autoencoder_trainer.autoencoders.get(env_id)
+            if autoencoder:
+                info['has_autoencoder'] = True
+                info['autoencoder_metrics'] = autoencoder.training_metrics
+
+                # Analyze latent space if we have history
+                if env_id in self.state_history and len(self.state_history[env_id]) >= 100:
+                    sample_states = np.array(list(self.state_history[env_id])[-100:])
+                    info['latent_analysis'] = self.autoencoder_trainer.analyze_latent_space(
+                        env_id, sample_states
+                    )
+
+        return info
+
+    def save_autoencoders(self, storage, agent_id: str):
+        """
+        Save all trained autoencoders using the storage backend.
+
+        Args:
+            storage: Storage backend instance
+            agent_id: Agent identifier
+        """
+        if not self.autoencoder_trainer:
+            return
+
+        for env_id, autoencoder in self.autoencoder_trainer.autoencoders.items():
+            # Get serializable state
+            state_dict = autoencoder.get_state_dict_serializable()
+
+            # Save through storage backend
+            storage.save_autoencoder(agent_id, env_id, state_dict)
+
+    def load_autoencoder(self, storage, agent_id: str, env_id: str):
+        """
+        Load a saved autoencoder for an environment from storage.
+
+        Args:
+            storage: Storage backend instance
+            agent_id: Agent identifier
+            env_id: Environment identifier
+        """
+        if not self.autoencoder_trainer:
+            self.logger.warning("Autoencoder support is disabled")
+            return
+
+        # Load from storage
+        state_dict = storage.load_autoencoder(agent_id, env_id)
+        if state_dict:
+            # Create autoencoder with correct architecture
+            arch = state_dict['architecture']
+            autoencoder = VariationalAutoencoder(
+                input_dim=arch['input_dim'],
+                latent_dim=arch['latent_dim'],
+                hidden_dims=arch['hidden_dims'],
+                device=self.autoencoder_trainer.device
+            )
+
+            # Load weights
+            autoencoder.load_state_dict_serializable(state_dict)
+
+            # Store in trainer
+            self.autoencoder_trainer.autoencoders[env_id] = autoencoder
+            self.normalization_methods[env_id] = 'autoencoder'
+
+            self.logger.info(f"Loaded autoencoder for {env_id}")
+
 
 class StateDenormalizer:
     """
     Converts normalized states back to original environment space.
 
-    This is useful for interpretability and debugging.
+    This is useful for interpretability and debugging. Now supports
+    autoencoder-based decompression.
     """
 
     def __init__(self, normalizer: StateNormalizer, env_id: str):
@@ -237,6 +407,11 @@ class StateDenormalizer:
         self.env_id = env_id
         self.stats = normalizer.get_statistics(env_id)
 
+        # Check if autoencoder is available
+        self.autoencoder = None
+        if normalizer.use_autoencoder and normalizer.autoencoder_trainer:
+            self.autoencoder = normalizer.autoencoder_trainer.autoencoders.get(env_id)
+
     def denormalize(self, normalized_state: np.ndarray,
                     original_size: int) -> np.ndarray:
         """
@@ -249,6 +424,28 @@ class StateDenormalizer:
         Returns:
             State in original dimensions
         """
+        # If we used autoencoder for normalization, use it for denormalization
+        if self.autoencoder is not None:
+            try:
+                # Decompress using autoencoder
+                decompressed = self.autoencoder.decompress(normalized_state)
+
+                # Ensure correct output size
+                if len(decompressed) == original_size:
+                    return decompressed
+                elif len(decompressed) > original_size:
+                    return decompressed[:original_size]
+                else:
+                    # Pad if needed
+                    result = np.zeros(original_size)
+                    result[:len(decompressed)] = decompressed
+                    return result
+
+            except Exception as e:
+                self.normalizer.logger.error(f"Autoencoder decompression failed: {e}")
+                # Fall back to linear denormalization
+
+        # Linear denormalization
         if original_size >= self.normalizer.target_dim:
             # State was reduced - we can't perfectly reconstruct
             # Return the most important features
@@ -263,7 +460,8 @@ class StandardizedStateDimensions:
     Defines the semantic layout of the 256-dimensional state space.
 
     This ensures similar concepts map to similar positions across environments,
-    enabling effective transfer learning.
+    enabling effective transfer learning. With autoencoders, these regions
+    represent semantic clusters in the latent space.
     """
 
     # Core positions (0-31): Object/Entity positions and orientations

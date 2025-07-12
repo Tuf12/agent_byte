@@ -1,48 +1,74 @@
 """
-Standardized neural network architecture for Agent Byte.
+Standardized neural network architecture for Agent Byte using PyTorch.
 
 This module implements the transferable neural network that maintains
 256-dimensional inputs regardless of the environment's native state size.
 """
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 import time
 import logging
 
 
-class StandardizedNetwork:
+class StandardizedNetwork(nn.Module):
     """
-    Standardized Neural Network Architecture for Transfer Learning.
+    Standardized Neural Network Architecture for Transfer Learning using PyTorch.
 
     Features:
     - Fixed 256-dimensional input for all environments
     - Transferable core layers
     - Environment-specific adapter layers
     - Pattern tracking for symbolic interpretation
+    - Proper gradient-based learning
     """
 
-    def __init__(self, action_size: int, learning_rate: float = 0.001):
+    def __init__(self, action_size: int, learning_rate: float = 0.001, device: str = None):
         """
         Initialize the standardized network.
 
         Args:
             action_size: Number of actions for the current environment
             learning_rate: Learning rate for network updates
+            device: Torch device ('cuda' or 'cpu')
         """
+        super(StandardizedNetwork, self).__init__()
+
         self.action_size = action_size
         self.learning_rate = learning_rate
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        # Standardized architecture
+        # Standardized architecture dimensions
         self.input_size = 256
-        self.core_sizes = [512, 256, 128]  # Transferable core layers
-        self.adapter_size = 64  # Environment adaptation layer
+        self.core_sizes = [512, 256, 128]
+        self.adapter_size = 64
 
-        # Initialize network layers
-        self._initialize_core_layers()
-        self._initialize_adapter_layer()
-        self._initialize_output_layer()
+        # Core transferable layers
+        self.core_layers = nn.ModuleList()
+
+        # Build core layers
+        layer_sizes = [self.input_size] + self.core_sizes
+        for i in range(len(layer_sizes) - 1):
+            self.core_layers.append(nn.Linear(layer_sizes[i], layer_sizes[i + 1]))
+
+        # Environment-specific adapter layer
+        self.adapter_layer = nn.Linear(self.core_sizes[-1], self.adapter_size)
+
+        # Environment-specific output layer
+        self.output_layer = nn.Linear(self.adapter_size, self.action_size)
+
+        # Dropout for regularization
+        self.dropout = nn.Dropout(p=0.1)
+
+        # Initialize weights
+        self._initialize_weights()
+
+        # Move to a device
+        self.to(self.device)
 
         # Pattern tracking for symbolic interpretation
         self.activation_patterns = []
@@ -55,127 +81,127 @@ class StandardizedNetwork:
             'created_at': time.time(),
             'training_steps': 0,
             'environments_seen': set(),
-            'transfer_count': 0
+            'transfer_count': 0,
+            'device': str(self.device)
         }
+
+        # Track activations for pattern analysis
+        self.core_features = None
+        self.activation_stats = {i: {'mean': 0.0, 'std': 1.0, 'sparsity': 0.0}
+                                for i in range(len(self.core_layers))}
 
         self.logger.info(
-            f"Initialized StandardizedNetwork: {self.input_size}→{self.core_sizes}→{self.adapter_size}→{self.action_size}")
+            f"Initialized PyTorch StandardizedNetwork: {self.input_size}→{self.core_sizes}→"
+            f"{self.adapter_size}→{self.action_size} on {self.device}")
 
-    def _initialize_core_layers(self):
-        """Initialize transferable core feature layers."""
-        self.core_layers = []
+    def _initialize_weights(self):
+        """Initialize network weights using Xavier initialization."""
+        for layer in self.core_layers:
+            nn.init.xavier_uniform_(layer.weight)
+            nn.init.zeros_(layer.bias)
 
-        layer_sizes = [self.input_size] + self.core_sizes
-        for i in range(len(layer_sizes) - 1):
-            layer = {
-                'weights': np.random.randn(layer_sizes[i], layer_sizes[i + 1]) * np.sqrt(2.0 / layer_sizes[i]),
-                'biases': np.zeros(layer_sizes[i + 1]),
-                'layer_type': 'core',
-                'transferable': True,
-                'activation_stats': {
-                    'mean': 0.0,
-                    'std': 1.0,
-                    'sparsity': 0.0
-                }
-            }
-            self.core_layers.append(layer)
+        nn.init.xavier_uniform_(self.adapter_layer.weight)
+        nn.init.zeros_(self.adapter_layer.bias)
 
-    def _initialize_adapter_layer(self):
-        """Initialize environment-specific adapter layer."""
-        core_output_size = self.core_sizes[-1]
+        nn.init.xavier_uniform_(self.output_layer.weight)
+        nn.init.zeros_(self.output_layer.bias)
 
-        self.adapter_layer = {
-            'weights': np.random.randn(core_output_size, self.adapter_size) * np.sqrt(2.0 / core_output_size),
-            'biases': np.zeros(self.adapter_size),
-            'layer_type': 'adapter',
-            'transferable': False,
-            'environment_specific': True
-        }
-
-    def _initialize_output_layer(self):
-        """Initialize environment-specific output layer."""
-        self.output_layer = {
-            'weights': np.random.randn(self.adapter_size, self.action_size) * np.sqrt(2.0 / self.adapter_size),
-            'biases': np.zeros(self.action_size),
-            'layer_type': 'output',
-            'transferable': False,
-            'environment_specific': True
-        }
-
-    def forward(self, state: np.ndarray) -> np.ndarray:
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the network.
 
         Args:
-            state: 256-dimensional normalized state
+            state: 256-dimensional normalized state.
 
         Returns:
             Q-values for each action
         """
-        # Validate input
-        if len(state) != self.input_size:
-            raise ValueError(f"Expected {self.input_size}-dimensional input, got {len(state)}")
+        # Convert to tensor if needed
+        if isinstance(state, np.ndarray):
+            state = torch.FloatTensor(state).to(self.device)
+        elif isinstance(state, torch.Tensor):
+            # Ensure tensor is on a correct device
+            state = state.to(self.device)
+
+        # Ensure correct shape
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
+        # Validate input dimensions
+        if state.shape[1] != self.input_size:
+            raise ValueError(f"Expected {self.input_size}-dimensional input, got {state.shape[1]}")
 
         # Track activations for pattern analysis
-        activations = [state.copy()]
+        activations = [state.clone().detach().cpu()]
 
         # Forward through core layers
         x = state
         for i, layer in enumerate(self.core_layers):
-            z = np.dot(x, layer['weights']) + layer['biases']
-            x = self._leaky_relu(z)
-            activations.append(x.copy())
+            x = layer(x)
+            x = F.leaky_relu(x, negative_slope=0.01)
+
+            # Apply dropout on all but last core layer
+            if i < len(self.core_layers) - 1:
+                x = self.dropout(x)
+
+            # Track activations
+            activations.append(x.clone().detach().cpu())
 
             # Update activation statistics
-            self._update_activation_stats(layer, x)
+            self._update_activation_stats(i, x)
 
         # Store core features for transfer learning
-        self.core_features = x.copy()
+        self.core_features = x.clone().detach()
 
         # Forward through adapter layer
-        adapter_z = np.dot(x, self.adapter_layer['weights']) + self.adapter_layer['biases']
-        adapter_out = self._leaky_relu(adapter_z)
-        activations.append(adapter_out.copy())
+        x = self.adapter_layer(x)
+        x = F.leaky_relu(x, negative_slope=0.01)
+        activations.append(x.clone().detach().cpu())
 
-        # Forward through output layer
-        output_z = np.dot(adapter_out, self.output_layer['weights']) + self.output_layer['biases']
-        q_values = output_z  # Linear output for Q-learning
+        # Forward through output layer (no activation for Q-values)
+        q_values = self.output_layer(x)
 
-        # Track patterns for symbolic interpretation
-        self._track_activation_pattern(activations)
+        # Track patterns for symbolic interpretation (only during inference)
+        if not self.training:
+            self._track_activation_pattern(activations)
 
         return q_values
 
-    def _leaky_relu(self, x: np.ndarray, alpha: float = 0.01) -> np.ndarray:
-        """Leaky ReLU activation function."""
-        return np.where(x > 0, x, alpha * x)
-
-    def _update_activation_stats(self, layer: Dict, activations: np.ndarray):
+    def _update_activation_stats(self, layer_idx: int, activations: torch.Tensor):
         """Update activation statistics for a layer."""
-        stats = layer['activation_stats']
+        with torch.no_grad():
+            stats = self.activation_stats[layer_idx]
 
-        # Running average update
-        alpha = 0.01
-        stats['mean'] = (1 - alpha) * stats['mean'] + alpha * np.mean(activations)
-        stats['std'] = (1 - alpha) * stats['std'] + alpha * np.std(activations)
-        stats['sparsity'] = (1 - alpha) * stats['sparsity'] + alpha * (np.sum(activations == 0) / len(activations))
+            # Running average update
+            alpha = 0.01
+            current_mean = activations.mean().item()
+            current_std = activations.std().item()
+            current_sparsity = (activations == 0).float().mean().item()
 
-    def _track_activation_pattern(self, activations: List[np.ndarray]):
+            stats['mean'] = (1 - alpha) * stats['mean'] + alpha * current_mean
+            stats['std'] = (1 - alpha) * stats['std'] + alpha * current_std
+            stats['sparsity'] = (1 - alpha) * stats['sparsity'] + alpha * current_sparsity
+
+    def _track_activation_pattern(self, activations: List[torch.Tensor]):
         """Track activation patterns for symbolic interpretation."""
-        # Create pattern summary
         pattern = {
             'timestamp': time.time(),
             'layer_stats': []
         }
 
         for i, activation in enumerate(activations):
+            # Convert to numpy for stats
+            act_np = activation.numpy()
+            if act_np.ndim > 1:
+                act_np = act_np[0]  # Take the first batch element
+
             stats = {
                 'layer': i,
-                'mean': float(np.mean(activation)),
-                'std': float(np.std(activation)),
-                'max': float(np.max(activation)),
-                'min': float(np.min(activation)),
-                'sparsity': float(np.sum(activation == 0) / len(activation))
+                'mean': float(np.mean(act_np)),
+                'std': float(np.std(act_np)),
+                'max': float(np.max(act_np)),
+                'min': float(np.min(act_np)),
+                'sparsity': float(np.sum(act_np == 0) / len(act_np))
             }
             pattern['layer_stats'].append(stats)
 
@@ -204,10 +230,10 @@ class StandardizedNetwork:
             'action': action,
             'reward': reward,
             'core_features_summary': {
-                'mean': float(np.mean(self.core_features)),
-                'std': float(np.std(self.core_features)),
-                'max_activation': float(np.max(self.core_features))
-            } if hasattr(self, 'core_features') else None
+                'mean': float(self.core_features.mean().item()),
+                'std': float(self.core_features.std().item()),
+                'max_activation': float(self.core_features.max().item())
+            } if self.core_features is not None else None
         }
 
         self.decision_patterns.append(decision)
@@ -218,7 +244,7 @@ class StandardizedNetwork:
 
     def get_pattern_summary(self) -> Dict[str, Any]:
         """
-        Get summary of tracked patterns for symbolic interpretation.
+        Get a summary of tracked patterns for symbolic interpretation.
 
         Returns:
             Pattern summary including stability, trends, and features
@@ -240,7 +266,8 @@ class StandardizedNetwork:
         pattern_stability = 1.0 - np.mean(np.std(layer_means, axis=0))
 
         # Analyze decision patterns
-        recent_decisions = self.decision_patterns[-20:] if len(self.decision_patterns) >= 20 else self.decision_patterns
+        recent_decisions = self.decision_patterns[-20:] if len(
+            self.decision_patterns) >= 20 else self.decision_patterns
         action_distribution = {}
         reward_by_action = {}
 
@@ -265,7 +292,7 @@ class StandardizedNetwork:
             'action_distribution': action_distribution,
             'avg_reward_by_action': avg_reward_by_action,
             'recent_patterns': recent_patterns[-3:],
-            'core_features_active': hasattr(self, 'core_features')
+            'core_features_active': self.core_features is not None
         }
 
     def transfer_core_layers_from(self, source_network: 'StandardizedNetwork'):
@@ -279,10 +306,14 @@ class StandardizedNetwork:
             raise ValueError("Incompatible network architectures")
 
         # Copy core layer weights
-        for i, source_layer in enumerate(source_network.core_layers):
-            self.core_layers[i]['weights'] = source_layer['weights'].copy()
-            self.core_layers[i]['biases'] = source_layer['biases'].copy()
-            self.core_layers[i]['activation_stats'] = source_layer['activation_stats'].copy()
+        with torch.no_grad():
+            for i, (target_layer, source_layer) in enumerate(
+                    zip(self.core_layers, source_network.core_layers)):
+                target_layer.weight.copy_(source_layer.weight)
+                target_layer.bias.copy_(source_layer.bias)
+
+        # Copy activation statistics
+        self.activation_stats = source_network.activation_stats.copy()
 
         # Update metadata
         self.metadata['transfer_count'] += 1
@@ -290,50 +321,83 @@ class StandardizedNetwork:
 
         self.logger.info("Successfully transferred core layers")
 
-    def get_state_dict(self) -> Dict[str, Any]:
-        """Get network state for saving."""
+    def freeze_core_layers(self):
+        """Freeze core layers for transfer learning."""
+        for layer in self.core_layers:
+            for param in layer.parameters():
+                param.requires_grad = False
+        self.logger.info("Core layers frozen")
+
+    def unfreeze_core_layers(self):
+        """Unfreeze core layers for fine-tuning."""
+        for layer in self.core_layers:
+            for param in layer.parameters():
+                param.requires_grad = True
+        self.logger.info("Core layers unfrozen")
+
+    def get_state_dict_serializable(self) -> Dict[str, Any]:
+        """
+        Get network state in a serializable format.
+
+        Returns:
+            Dictionary containing all network states
+        """
+        # Get PyTorch state dict
+        pytorch_state = self.state_dict()
+
+        # Convert to serializable format
+        serializable_state = {}
+        for key, tensor in pytorch_state.items():
+            serializable_state[key] = tensor.cpu().numpy().tolist()
+
         return {
-            'core_layers': [
-                {
-                    'weights': layer['weights'].tolist(),
-                    'biases': layer['biases'].tolist(),
-                    'activation_stats': layer['activation_stats']
-                }
-                for layer in self.core_layers
-            ],
-            'adapter_layer': {
-                'weights': self.adapter_layer['weights'].tolist(),
-                'biases': self.adapter_layer['biases'].tolist()
-            },
-            'output_layer': {
-                'weights': self.output_layer['weights'].tolist(),
-                'biases': self.output_layer['biases'].tolist()
-            },
+            'pytorch_state': serializable_state,
             'metadata': self.metadata,
-            'action_size': self.action_size
+            'action_size': self.action_size,
+            'activation_stats': self.activation_stats,
+            'architecture': {
+                'input_size': self.input_size,
+                'core_sizes': self.core_sizes,
+                'adapter_size': self.adapter_size
+            }
         }
 
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        """Load network state."""
+    def load_state_dict_serializable(self, state_dict: Dict[str, Any]):
+        """
+        Load network state from serializable format.
+
+        Args:
+            state_dict: Dictionary containing network state
+        """
         # Verify compatibility
         if state_dict['action_size'] != self.action_size:
-            raise ValueError(f"Action size mismatch: expected {self.action_size}, got {state_dict['action_size']}")
+            raise ValueError(
+                f"Action size mismatch: expected {self.action_size}, "
+                f"got {state_dict['action_size']}")
 
-        # Load core layers
-        for i, layer_data in enumerate(state_dict['core_layers']):
-            self.core_layers[i]['weights'] = np.array(layer_data['weights'])
-            self.core_layers[i]['biases'] = np.array(layer_data['biases'])
-            self.core_layers[i]['activation_stats'] = layer_data['activation_stats']
+        # Load PyTorch state
+        pytorch_state = {}
+        for key, value in state_dict['pytorch_state'].items():
+            pytorch_state[key] = torch.tensor(value, device=self.device)
 
-        # Load adapter layer
-        self.adapter_layer['weights'] = np.array(state_dict['adapter_layer']['weights'])
-        self.adapter_layer['biases'] = np.array(state_dict['adapter_layer']['biases'])
-
-        # Load output layer
-        self.output_layer['weights'] = np.array(state_dict['output_layer']['weights'])
-        self.output_layer['biases'] = np.array(state_dict['output_layer']['biases'])
+        self.load_state_dict(pytorch_state)
 
         # Load metadata
         self.metadata.update(state_dict['metadata'])
+        self.activation_stats = state_dict.get('activation_stats', self.activation_stats)
 
         self.logger.info("Successfully loaded network state")
+
+    def get_num_parameters(self) -> Dict[str, int]:
+        """Get number of parameters in different parts of the network."""
+        core_params = sum(p.numel() for layer in self.core_layers
+                         for p in layer.parameters())
+        adapter_params = sum(p.numel() for p in self.adapter_layer.parameters())
+        output_params = sum(p.numel() for p in self.output_layer.parameters())
+
+        return {
+            'core': core_params,
+            'adapter': adapter_params,
+            'output': output_params,
+            'total': core_params + adapter_params + output_params
+        }

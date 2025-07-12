@@ -2,7 +2,8 @@
 Main Agent Byte class - the core of the modular AI agent.
 
 This module implements the main agent that is completely environment-agnostic
-and supports transfer learning across any environment.
+and supports transfer learning across any environment. Now with autoencoder
+support for better state representation learning.
 """
 
 import numpy as np
@@ -26,7 +27,8 @@ class AgentByte:
     The main Agent Byte class - a modular, transferable AI agent.
 
     This agent can learn from any environment implementing the Environment interface
-    and transfer knowledge between different environments.
+    and transfer knowledge between different environments. Now supports autoencoder-based
+    state compression for improved representation learning.
     """
 
     def __init__(self,
@@ -48,8 +50,11 @@ class AgentByte:
         # Set up logging
         self.logger = logging.getLogger(f"AgentByte-{agent_id}")
 
-        # Initialize components
-        self.state_normalizer = StateNormalizer(self.config.state_dimensions)
+        # Initialize components with autoencoder support
+        self.state_normalizer = StateNormalizer(
+            self.config.state_dimensions,
+            use_autoencoder=True  # Enable autoencoder by default
+        )
         self.environment_analyzer = EnvironmentAnalyzer()
 
         # Agent state
@@ -65,11 +70,24 @@ class AgentByte:
         self.network = None
         self.dual_brain = None
 
-        self.logger.info(f"Agent Byte {agent_id} initialized")
-
         # Neural network and brain components will be initialized when needed
         self.dual_brain = None
         self.current_env_analysis = None
+
+        # Load existing autoencoders
+        self._load_autoencoders()
+
+        self.logger.info(f"Agent Byte {agent_id} initialized with autoencoder support")
+
+    def _load_autoencoders(self):
+        """Load any existing autoencoders for this agent."""
+        try:
+            autoencoder_envs = self.storage.list_autoencoders(self.agent_id)
+            for env_id in autoencoder_envs:
+                self.state_normalizer.load_autoencoder(self.storage, self.agent_id, env_id)
+                self.logger.info(f"Loaded autoencoder for environment: {env_id}")
+        except Exception as e:
+            self.logger.warning(f"Could not load autoencoders: {e}")
 
     def _load_or_create_profile(self):
         """Load existing agent profile or create new one."""
@@ -81,7 +99,7 @@ class AgentByte:
             self.creation_time = datetime.fromisoformat(profile.get('creation_time', datetime.now().isoformat()))
             self.logger.info(f"Loaded existing profile: {len(self.environments_experienced)} environments experienced")
         else:
-            # Create new profile
+            # Create a new profile
             self._save_profile()
             self.logger.info("Created new agent profile")
 
@@ -93,7 +111,8 @@ class AgentByte:
             'environments_experienced': list(self.environments_experienced),
             'total_episodes': self.total_episodes,
             'config': self.config.to_dict(),
-            'last_updated': datetime.now().isoformat()
+            'last_updated': datetime.now().isoformat(),
+            'autoencoder_enabled': self.state_normalizer.use_autoencoder
         }
 
         self.storage.save_agent_profile(self.agent_id, profile)
@@ -138,7 +157,8 @@ class AgentByte:
             'start_time': time.time(),
             'episode_rewards': [],
             'episode_lengths': [],
-            'learning_events': []
+            'learning_events': [],
+            'autoencoder_status': self._get_autoencoder_status(env_id)
         }
 
         # Main training loop
@@ -157,7 +177,7 @@ class AgentByte:
             if (episode + 1) % self.config.save_interval == 0:
                 self._save_progress(env_id)
 
-        # Final save
+        # Final save including autoencoders
         self._save_progress(env_id)
         self.total_episodes += episodes
         self._save_profile()
@@ -172,9 +192,16 @@ class AgentByte:
             'improvement': self._calculate_improvement(training_stats['episode_rewards'])
         }
 
+        # Update autoencoder status
+        training_stats['autoencoder_status_final'] = self._get_autoencoder_status(env_id)
+
         self.logger.info(f"Training completed: {training_stats['final_performance']}")
 
         return training_stats
+
+    def _get_autoencoder_status(self, env_id: str) -> Dict[str, Any]:
+        """Get the status of autoencoder for an environment."""
+        return self.state_normalizer.get_normalization_info(env_id)
 
     def _train_episode(self, env: Environment, episode_num: int) -> Tuple[float, int]:
         """
@@ -187,7 +214,7 @@ class AgentByte:
         Returns:
             Tuple of (episode_reward, episode_length)
         """
-        # Start episode in dual brain
+        # Start an episode in dual brain
         if self.dual_brain is not None:
             self.dual_brain.start_episode()
 
@@ -197,7 +224,7 @@ class AgentByte:
         episode_length = 0
 
         while not done and episode_length < 10000:  # Prevent infinite episodes
-            # Normalize state
+            # Normalize state (may use autoencoder)
             normalized_state = self.state_normalizer.normalize(
                 state, env.get_id()
             )
@@ -239,7 +266,7 @@ class AgentByte:
         if self.dual_brain is None:
             self._initialize_dual_brain(env.get_action_size())
 
-        # Make decision using dual brain
+        # Make a decision using dual brain
         action = self.dual_brain.decide(normalized_state, self.config.exploration_rate)
 
         return action
@@ -265,14 +292,14 @@ class AgentByte:
         Store experience for learning.
 
         """
-        # Normalize states for storage
+        # Normalize states for storage (using autoencoder if available)
         normalized_state = self.state_normalizer.normalize(state, env_id)
         normalized_next_state = self.state_normalizer.normalize(next_state, env_id)
 
         # Create experience vector for similarity search
         experience_vector = np.concatenate([
             normalized_state[:128],  # First half of state
-            normalized_next_state[:128]  # First half of next state
+            normalized_next_state[:128]  # First half of the next state
         ])
 
         metadata = {
@@ -280,7 +307,8 @@ class AgentByte:
             'action': action,
             'reward': reward,
             'done': done,
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'normalization_method': self.state_normalizer.normalization_methods.get(env_id, 'unknown')
         }
 
         # Save experience vector
@@ -324,7 +352,8 @@ class AgentByte:
             'target_environment': target_id,
             'transfer_time': time.time(),
             'similar_experiences_found': 0,
-            'transferred_skills': []
+            'transferred_skills': [],
+            'autoencoder_compatibility': self._check_autoencoder_compatibility(target_env)
         }
 
         # Prepare transfer package if dual brain exists
@@ -353,7 +382,8 @@ class AgentByte:
         for exp in similar_experiences[:5]:
             self.logger.info(
                 f"Similar experience from {exp['metadata']['env_id']}: "
-                f"similarity={exp['similarity']:.3f}, reward={exp['metadata']['reward']:.2f}"
+                f"similarity={exp['similarity']:.3f}, reward={exp['metadata']['reward']:.2f}, "
+                f"normalization={exp['metadata'].get('normalization_method', 'unknown')}"
             )
 
         # Perform initial training with transfer knowledge
@@ -364,8 +394,33 @@ class AgentByte:
 
         return transfer_results
 
+    def _check_autoencoder_compatibility(self, target_env: Environment) -> Dict[str, Any]:
+        """Check if we can reuse autoencoders from similar environments."""
+        target_id = target_env.get_id()
+        target_state_size = target_env.get_state_size()
+
+        compatibility = {
+            'target_state_size': target_state_size,
+            'compatible_autoencoders': [],
+            'exact_match': False
+        }
+
+        # Check existing autoencoders
+        for env_id in self.state_normalizer.autoencoder_trainer.autoencoders:
+            autoencoder = self.state_normalizer.autoencoder_trainer.autoencoders[env_id]
+            if autoencoder.input_dim == target_state_size:
+                compatibility['compatible_autoencoders'].append({
+                    'env_id': env_id,
+                    'input_dim': autoencoder.input_dim,
+                    'training_metrics': autoencoder.training_metrics
+                })
+                if env_id == target_id:
+                    compatibility['exact_match'] = True
+
+        return compatibility
+
     def _process_environment_analysis(self, env_id: str, analysis: Dict[str, Any]):
-        """Process and store environment analysis results."""
+        """Process and store environment analysis result."""
         # Extract key information
         understanding = {
             'env_id': env_id,
@@ -396,27 +451,39 @@ class AgentByte:
         # Neural network and dual brain initialization will be added in Phase 3
         self.logger.info(f"Initialized components for {env_id}")
 
-    # Update _save_progress to include dual brain:
+    # Update _save_progress to include dual brain and autoencoders:
     def _save_progress(self, env_id: str):
         """Save current training progress."""
         if self.dual_brain is not None:
             self.dual_brain.save_state(env_id)
             self.logger.debug(f"Saved dual brain state for {env_id}")
 
-    def _calculate_improvement(self, rewards: List[float]) -> float | floating | Any:
-        """Calculate improvement over training."""
-        if len(rewards) < 20:
-            return 0.0
+        # Save autoencoders
+        self.state_normalizer.save_autoencoders(self.storage, self.agent_id)
+        self.logger.debug(f"Saved autoencoders")
 
-        # Compare first 10% to last 10%
-        n = max(1, len(rewards) // 10)
+    def _calculate_improvement(self, rewards: List[float]) -> float:
+        """Calculate normalized improvement over training.
+        Returns:
+            Relative improvement: (late_mean - early_mean) / abs(early_mean)
+            0.0 if not enough data or if both means are zero.
+        """
+        if len(rewards) < 20:
+            return 0.0  # Not enough data for meaningful trend
+
+        n = int(max(1, len(rewards) // 10))
+
         early_mean = np.mean(rewards[:n])
         late_mean = np.mean(rewards[-n:])
 
-        if early_mean != 0:
-            return (late_mean - early_mean) / abs(early_mean)
-        else:
-            return late_mean
+        eps = 1e-8  # Small value to avoid zero division
+
+        if abs(early_mean) < eps:
+            if abs(late_mean) < eps:
+                return 0.0  # No change, all rewards are near zero
+            else:
+                return float(np.sign(late_mean))  # Sudden jump from zero to nonzero
+        return (late_mean - early_mean) / (abs(early_mean) + eps)
 
     # Add method to get insights:
     def get_insights(self) -> Dict[str, Any]:
@@ -424,8 +491,13 @@ class AgentByte:
         insights = {
             'agent_id': self.agent_id,
             'environments_experienced': list(self.environments_experienced),
-            'total_episodes': self.total_episodes
+            'total_episodes': self.total_episodes,
+            'normalization_methods': {}
         }
+
+        # Add normalization info for each environment
+        for env_id in self.environments_experienced:
+            insights['normalization_methods'][env_id] = self.state_normalizer.get_normalization_info(env_id)
 
         if self.dual_brain is not None:
             insights['dual_brain'] = self.dual_brain.get_insights()
@@ -441,7 +513,9 @@ class AgentByte:
             'creation_time': self.creation_time.isoformat(),
             'current_environment': self.current_environment,
             'exploration_rate': self.config.exploration_rate,
-            'config': self.config.to_dict()
+            'config': self.config.to_dict(),
+            'autoencoder_enabled': self.state_normalizer.use_autoencoder,
+            'autoencoders_trained': len(self.state_normalizer.autoencoder_trainer.autoencoders) if self.state_normalizer.autoencoder_trainer else 0
         }
 
     def reset_exploration(self):

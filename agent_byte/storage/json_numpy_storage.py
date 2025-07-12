@@ -1,9 +1,11 @@
+
+
 """
 JSON + Numpy storage implementation for Agent Byte.
 
 This storage backend uses JSON files for structured data and numpy arrays
-for vector storage. It's designed to be simple but upgradeable to vector
-databases in the future.
+for vector storage. It's designed to be straightforward but upgradeable to vector
+databases in the future. Now includes autoencoder storage support.
 """
 
 import json
@@ -14,6 +16,8 @@ import shutil
 from datetime import datetime
 
 from .base import StorageBase
+from ..analysis.autoencoder import VariationalAutoencoder
+
 
 
 class JsonNumpyStorage(StorageBase):
@@ -28,7 +32,8 @@ class JsonNumpyStorage(StorageBase):
     │       ├── environments/
     │       │   └── {env_id}/
     │       │       ├── brain_state.json
-    │       │       └── knowledge.json
+    │       │       ├── knowledge.json
+    │       │       └── autoencoder.json
     │       └── experiences/
     │           ├── vectors.npy
     │           └── metadata.json
@@ -165,6 +170,77 @@ class JsonNumpyStorage(StorageBase):
         except Exception as e:
             self.logger.error(f"Failed to load knowledge: {str(e)}")
             return None
+
+    def save_autoencoder(self, agent_id: str, env_id: str, state_dict: Dict[str, Any]) -> bool:
+        """Save autoencoder state to JSON file."""
+        try:
+            env_path = self._get_env_path(agent_id, env_id)
+            self._ensure_directory(env_path)
+
+            # Add timestamp
+            state_dict = self._add_timestamp(state_dict)
+
+            # Save to file
+            file_path = env_path / "autoencoder.json"
+            with open(file_path, 'w') as f:
+                json.dump(state_dict, f, indent=2, default=str)
+
+            # Clear cache
+            cache_key = self._get_cache_key("autoencoder", agent_id, env_id)
+            if cache_key in self._cache:
+                del self._cache[cache_key]
+
+            self.logger.debug(f"Saved autoencoder for {agent_id}/{env_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to save autoencoder: {str(e)}")
+            return False
+
+    def load_autoencoder(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
+        """Load autoencoder state from JSON file."""
+        try:
+            # Check cache first
+            cache_key = self._get_cache_key("autoencoder", agent_id, env_id)
+            cached = self._get_from_cache(cache_key)
+            if cached is not None:
+                return cached
+
+            file_path = self._get_env_path(agent_id, env_id) / "autoencoder.json"
+            if not file_path.exists():
+                return None
+
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+
+            # Cache the result
+            self._put_in_cache(cache_key, data)
+
+            return data
+
+        except Exception as e:
+            self.logger.error(f"Failed to load autoencoder: {str(e)}")
+            return None
+
+    def list_autoencoders(self, agent_id: str) -> List[str]:
+        """List all environments with saved autoencoders for an agent."""
+        try:
+            env_dir = self._get_agent_path(agent_id) / "environments"
+            if not env_dir.exists():
+                return []
+
+            autoencoders = []
+            for env_path in env_dir.iterdir():
+                if env_path.is_dir():
+                    autoencoder_file = env_path / "autoencoder.json"
+                    if autoencoder_file.exists():
+                        autoencoders.append(env_path.name)
+
+            return autoencoders
+
+        except Exception as e:
+            self.logger.error(f"Failed to list autoencoders: {str(e)}")
+            return []
 
     def save_experience_vector(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
         """Save experience vector for similarity search."""
@@ -343,7 +419,7 @@ class JsonNumpyStorage(StorageBase):
                 return
 
             # Don't load all vectors on startup - load on demand
-            # Just register which agents exist
+            #  register which agents exist
             for agent_dir in agents_dir.iterdir():
                 if agent_dir.is_dir():
                     agent_id = agent_dir.name

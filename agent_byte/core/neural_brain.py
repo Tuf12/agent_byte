@@ -1,10 +1,15 @@
 """
-Neural brain component for Agent Byte.
+Neural brain component for Agent Byte with PyTorch implementation.
 
 This module implements the neural learning component of the dual brain system,
-handling pattern recognition, value learning, and experience replay.
+handling pattern recognition, value learning, and experience replay with proper
+gradient-based optimization.
 """
 
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 from collections import deque
@@ -17,7 +22,7 @@ from ..storage.base import StorageBase
 
 class NeuralBrain:
     """
-    Neural learning engine with pattern tracking.
+    Neural learning engine with pattern tracking using PyTorch.
 
     This brain learns from experience using neural networks and tracks
     patterns for symbolic interpretation.
@@ -43,18 +48,39 @@ class NeuralBrain:
         self.config = config
         self.logger = logging.getLogger(f"NeuralBrain-{agent_id}")
 
+        # Device configuration
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.logger.info(f"Using device: {self.device}")
+
         # Neural networks
         self.network = StandardizedNetwork(
             action_size=action_size,
-            learning_rate=config.get('learning_rate', 0.001)
+            learning_rate=config.get('learning_rate', 0.001),
+            device=self.device
         )
         self.target_network = StandardizedNetwork(
             action_size=action_size,
-            learning_rate=config.get('learning_rate', 0.001)
+            learning_rate=config.get('learning_rate', 0.001),
+            device=self.device
         )
 
         # Copy initial weights to target network
-        self.target_network.load_state_dict(self.network.get_state_dict())
+        self.target_network.load_state_dict(self.network.state_dict())
+        self.target_network.eval()  # Target network is always in eval mode
+
+        # Optimizer
+        self.optimizer = optim.Adam(
+            self.network.parameters(),
+            lr=config.get('learning_rate', 0.001),
+            eps=1e-8
+        )
+
+        # Learning rate scheduler
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer,
+            step_size=10000,
+            gamma=0.95
+        )
 
         # Experience replay
         self.experience_buffer = deque(
@@ -67,16 +93,20 @@ class NeuralBrain:
         self.target_update_frequency = config.get('target_update_frequency', 1000)
         self.gamma = config.get('gamma', 0.99)
 
+        # Loss function (Huber loss for stability)
+        self.criterion = nn.SmoothL1Loss()
+
         # Pattern tracking
         self.learning_history = []
         self.performance_metrics = {
             'total_reward': 0.0,
             'episode_count': 0,
             'average_loss': 0.0,
-            'pattern_stability': 0.0
+            'pattern_stability': 0.0,
+            'learning_rate': config.get('learning_rate', 0.001)
         }
 
-        self.logger.info("Neural brain initialized")
+        self.logger.info("PyTorch Neural brain initialized")
 
     def select_action(self, state: np.ndarray, exploration_rate: float) -> Tuple[int, Dict[str, Any]]:
         """
@@ -89,25 +119,34 @@ class NeuralBrain:
         Returns:
             Tuple of (action, decision_info)
         """
+        # Convert state to tensor
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+
         # Get Q-values
-        q_values = self.network.forward(state)
+        self.network.eval()  # Set to eval mode
+        with torch.no_grad():
+            q_values = self.network(state_tensor)
+        self.network.train()  # Back to train mode
+
+        # Convert to numpy for decision
+        q_values_np = q_values.cpu().numpy()[0]
 
         # Epsilon-greedy selection
         if random.random() < exploration_rate:
             action = random.randint(0, self.action_size - 1)
             decision_type = 'exploration'
         else:
-            action = int(np.argmax(q_values))
+            action = int(np.argmax(q_values_np))
             decision_type = 'exploitation'
 
         # Create decision info
         decision_info = {
-            'q_values': q_values.tolist(),
+            'q_values': q_values_np.tolist(),
             'selected_action': action,
             'decision_type': decision_type,
             'exploration_rate': exploration_rate,
-            'max_q_value': float(np.max(q_values)),
-            'q_value_std': float(np.std(q_values))
+            'max_q_value': float(np.max(q_values_np)),
+            'q_value_std': float(np.std(q_values_np))
         }
 
         return action, decision_info
@@ -142,7 +181,7 @@ class NeuralBrain:
 
     def learn(self) -> Optional[float]:
         """
-        Perform learning update using experience replay.
+        Perform learning update using experience replay with PyTorch.
 
         Returns:
             Average loss or None if not enough experiences
@@ -153,57 +192,60 @@ class NeuralBrain:
         # Sample batch
         batch = random.sample(self.experience_buffer, self.batch_size)
 
-        # Prepare batch data
-        states = np.array([exp['state'] for exp in batch])
-        actions = np.array([exp['action'] for exp in batch])
-        rewards = np.array([exp['reward'] for exp in batch])
-        next_states = np.array([exp['next_state'] for exp in batch])
-        dones = np.array([exp['done'] for exp in batch])
+        # Prepare batch tensors
+        states = torch.FloatTensor([exp['state'] for exp in batch]).to(self.device)
+        actions = torch.LongTensor([exp['action'] for exp in batch]).to(self.device)
+        rewards = torch.FloatTensor([exp['reward'] for exp in batch]).to(self.device)
+        next_states = torch.FloatTensor([exp['next_state'] for exp in batch]).to(self.device)
+        dones = torch.FloatTensor([exp['done'] for exp in batch]).to(self.device)
 
-        # Compute target Q-values
-        current_q_values = np.array([self.network.forward(s) for s in states])
-        next_q_values = np.array([self.target_network.forward(s) for s in next_states])
+        # Current Q values
+        current_q_values = self.network(states).gather(1, actions.unsqueeze(1))
 
-        # Compute targets (Double DQN)
-        next_actions = np.argmax(np.array([self.network.forward(s) for s in next_states]), axis=1)
-        targets = current_q_values.copy()
-
-        for i in range(self.batch_size):
-            if dones[i]:
-                targets[i, actions[i]] = rewards[i]
-            else:
-                targets[i, actions[i]] = rewards[i] + self.gamma * next_q_values[i, next_actions[i]]
+        # Double DQN: Use the main network to select actions, target network to evaluate
+        with torch.no_grad():
+            # Select the best actions using the main network
+            next_actions = self.network(next_states).max(1)[1].unsqueeze(1)
+            # Evaluate using target network
+            next_q_values = self.target_network(next_states).gather(1, next_actions)
+            # Compute targets
+            targets = rewards.unsqueeze(1) + self.gamma * next_q_values * (1 - dones.unsqueeze(1))
 
         # Compute loss
-        predictions = current_q_values[np.arange(self.batch_size), actions]
-        target_values = targets[np.arange(self.batch_size), actions]
-        loss = np.mean((predictions - target_values) ** 2)
+        loss = self.criterion(current_q_values, targets)
 
-        # Gradient descent update (simplified - in real implementation would use autograd)
-        # This is a placeholder for the actual backpropagation
-        learning_rate = self.network.learning_rate
+        # Optimize
+        self.optimizer.zero_grad()
+        loss.backward()
 
-        # Update network weights (simplified)
-        # In a real implementation, this would involve proper backpropagation
-        # For now, we'll just track the loss
+        # Gradient clipping for stability
+        torch.nn.utils.clip_grad_norm_(self.network.parameters(), max_norm=10.0)
 
+        self.optimizer.step()
+
+        # Update learning rate scheduler
+        self.scheduler.step()
+
+        # Update training steps
         self.training_steps += 1
 
         # Update target network periodically
         if self.training_steps % self.target_update_frequency == 0:
-            self.target_network.load_state_dict(self.network.get_state_dict())
-            self.logger.debug("Updated target network")
+            self.target_network.load_state_dict(self.network.state_dict())
+            self.logger.debug(f"Updated target network at step {self.training_steps}")
 
         # Update metrics
+        loss_value = loss.item()
         alpha = 0.01
         self.performance_metrics['average_loss'] = (
-                (1 - alpha) * self.performance_metrics['average_loss'] + alpha * loss
+                (1 - alpha) * self.performance_metrics['average_loss'] + alpha * loss_value
         )
+        self.performance_metrics['learning_rate'] = self.optimizer.param_groups[0]['lr']
 
         # Track learning progress
-        self._track_learning_progress(loss)
+        self._track_learning_progress(loss_value)
 
-        return float(loss)
+        return float(loss_value)
 
     def _track_learning_progress(self, loss: float):
         """Track learning progress for pattern analysis."""
@@ -212,7 +254,8 @@ class NeuralBrain:
             'loss': float(loss),
             'average_reward': self.performance_metrics['total_reward'] / max(1, self.training_steps),
             'buffer_size': len(self.experience_buffer),
-            'pattern_summary': self.network.get_pattern_summary()
+            'pattern_summary': self.network.get_pattern_summary(),
+            'learning_rate': self.performance_metrics['learning_rate']
         }
 
         self.learning_history.append(progress)
@@ -242,7 +285,8 @@ class NeuralBrain:
             'emerging_patterns': emerging_patterns,
             'performance_metrics': self.performance_metrics.copy(),
             'training_steps': self.training_steps,
-            'experience_count': len(self.experience_buffer)
+            'experience_count': len(self.experience_buffer),
+            'network_stats': self.network.get_num_parameters()
         }
 
     def _analyze_learning_trajectory(self) -> Dict[str, Any]:
@@ -265,7 +309,8 @@ class NeuralBrain:
             'loss_trend': float(loss_trend),
             'reward_trend': float(reward_trend),
             'is_improving': loss_trend < 0 < reward_trend,
-            'stability': float(1.0 - np.std(losses[-10:]) / (np.mean(losses[-10:]) + 1e-8))
+            'stability': float(1.0 - np.std(losses[-10:]) / (np.mean(losses[-10:]) + 1e-8)),
+            'current_lr': self.performance_metrics['learning_rate']
         }
 
     def _identify_emerging_patterns(self) -> List[Dict[str, Any]]:
@@ -339,13 +384,19 @@ class NeuralBrain:
             Success status
         """
         try:
+            # Prepare brain state
             brain_state = {
-                'network_state': self.network.get_state_dict(),
-                'target_network_state': self.target_network.get_state_dict(),
+                'network_state': self.network.get_state_dict_serializable(),
+                'target_network_state': self.target_network.get_state_dict_serializable(),
+                'optimizer_state': {
+                    'state_dict': self.optimizer.state_dict(),
+                    'scheduler_state': self.scheduler.state_dict()
+                },
                 'training_steps': self.training_steps,
                 'performance_metrics': self.performance_metrics,
                 'learning_history': self.learning_history[-100:],  # Recent history
-                'config': self.config
+                'config': self.config,
+                'device': str(self.device)
             }
 
             return self.storage.save_brain_state(self.agent_id, env_id, brain_state)
@@ -370,8 +421,13 @@ class NeuralBrain:
                 return False
 
             # Load networks
-            self.network.load_state_dict(brain_state['network_state'])
-            self.target_network.load_state_dict(brain_state['target_network_state'])
+            self.network.load_state_dict_serializable(brain_state['network_state'])
+            self.target_network.load_state_dict_serializable(brain_state['target_network_state'])
+
+            # Load optimizer
+            if 'optimizer_state' in brain_state:
+                self.optimizer.load_state_dict(brain_state['optimizer_state']['state_dict'])
+                self.scheduler.load_state_dict(brain_state['optimizer_state']['scheduler_state'])
 
             # Load metrics
             self.training_steps = brain_state.get('training_steps', 0)
@@ -388,3 +444,29 @@ class NeuralBrain:
     def reset_episode(self):
         """Reset episode-specific metrics."""
         self.performance_metrics['episode_count'] += 1
+
+    def enable_transfer_mode(self, freeze_core: bool = True):
+        """
+        Enable to transfer learning mode.
+
+        Args:
+            freeze_core: Whether to freeze core layers
+        """
+        if freeze_core:
+            self.network.freeze_core_layers()
+            # Only optimize adapter and output layers
+            self.optimizer = optim.Adam(
+                filter(lambda p: p.requires_grad, self.network.parameters()),
+                lr=self.config.get('learning_rate', 0.001) * 0.1  # Lower LR for fine-tuning
+            )
+        self.logger.info(f"Transfer mode enabled (freeze_core={freeze_core})")
+
+    def disable_transfer_mode(self):
+        """Disable transfer learning mode."""
+        self.network.unfreeze_core_layers()
+        # Re-initialize optimizer with all parameters
+        self.optimizer = optim.Adam(
+            self.network.parameters(),
+            lr=self.config.get('learning_rate', 0.001)
+        )
+        self.logger.info("Transfer mode disabled")

@@ -3,9 +3,11 @@
 
 from .state_normalizer import StateNormalizer, StandardizedStateDimensions
 from .environment_analyzer import EnvironmentAnalyzer
+from .autoencoder import VariationalAutoencoder
 
 __all__ = [
     "StateNormalizer",
     "StandardizedStateDimensions",
     "EnvironmentAnalyzer",
+    "VariationalAutoencoder",
 ]

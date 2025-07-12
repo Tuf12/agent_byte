@@ -78,10 +78,54 @@ class StorageBase(ABC):
         """Save agent profile."""
         pass
 
+    # New abstract methods for autoencoder support
+
+    @abstractmethod
+    def save_autoencoder(self, agent_id: str, env_id: str, state_dict: Dict[str, Any]) -> bool:
+        """
+        Save autoencoder state for an environment.
+
+        Args:
+            agent_id: Agent identifier
+            env_id: Environment identifier
+            state_dict: Autoencoder state dictionary
+
+        Returns:
+            Success status
+        """
+        pass
+
+    @abstractmethod
+    def load_autoencoder(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load autoencoder state for an environment.
+
+        Args:
+            agent_id: Agent identifier
+            env_id: Environment identifier
+
+        Returns:
+            Autoencoder state dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def list_autoencoders(self, agent_id: str) -> List[str]:
+        """
+        List all environments with saved autoencoders for an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            List of environment IDs with autoencoders
+        """
+        pass
+
     # Helper methods available to all implementations
 
     def _get_cache_key(self, *args) -> str:
-        """Generate cache key from arguments."""
+        """Generate a cache key from arguments."""
         return "_".join(str(arg) for arg in args)
 
     def _get_from_cache(self, key: str) -> Optional[Any]:
@@ -96,7 +140,7 @@ class StorageBase(ABC):
             # Simple cache size management
             max_size = self.config.get('cache_size', 100)
             if len(self._cache) >= max_size:
-                # Remove oldest entry (simple FIFO)
+                # Remove the oldest entry (simple FIFO)
                 oldest_key = next(iter(self._cache))
                 del self._cache[oldest_key]
             self._cache[key] = value
@@ -174,6 +218,11 @@ class StorageBase(ABC):
                     knowledge = self.load_knowledge(agent_id, env_id)
                     if knowledge:
                         target_storage.save_knowledge(agent_id, env_id, knowledge)
+
+                    # Migrate autoencoder
+                    autoencoder = self.load_autoencoder(agent_id, env_id)
+                    if autoencoder:
+                        target_storage.save_autoencoder(agent_id, env_id, autoencoder)
 
                 # Note: Experience vectors would need special handling
                 self.logger.info(f"Successfully migrated agent: {agent_id}")
