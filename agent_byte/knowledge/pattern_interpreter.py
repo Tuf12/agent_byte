@@ -37,13 +37,15 @@ class PatternInterpreter:
         self.interpretation_history = []
         self.max_history = 100
 
-    def interpret(self, neural_insights: Dict[str, Any]) -> Dict[str, Any]:
+    def interpret(self, neural_insights: Dict[str, Any],
+                 cluster_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Interpret neural insights into symbolic concepts.
 
         Args:
             neural_insights: Insights from neural brain including patterns,
                            trajectories, and performance metrics
+            cluster_context: Optional cluster information from skill discovery
 
         Returns:
             Symbolic interpretation of neural patterns
@@ -54,7 +56,8 @@ class PatternInterpreter:
             'learning_phase': 'unknown',
             'skill_indicators': [],
             'confidence': 0.0,
-            'recommendations': []
+            'recommendations': [],
+            'cluster_context': cluster_context
         }
 
         # Extract key information
@@ -85,7 +88,7 @@ class PatternInterpreter:
 
         # Extract skill indicators
         interpretation['skill_indicators'] = self._extract_skill_indicators(
-            emerging_patterns, pattern_summary
+            emerging_patterns, pattern_summary, cluster_context
         )
 
         # Calculate overall confidence
@@ -115,7 +118,24 @@ class PatternInterpreter:
         stability = trajectory.get('stability', 0)
         pattern_stability = pattern_summary.get('pattern_stability', 0)
 
-        if loss_trend < -0.001 and stability > 0.7 and pattern_stability > 0.6:
+        # More lenient convergence detection
+        # Original: loss_trend < -0.001 AND stability > 0.7 AND pattern_stability > 0.6
+        # New: Multiple paths to convergence
+        convergence_detected = False
+
+        # Path 1: All conditions met (original)
+        if loss_trend < -0.001 and stability >= 0.7 and pattern_stability > 0.6:
+            convergence_detected = True
+
+        # Path 2: High pattern stability with decent overall stability
+        elif stability >= 0.7 and pattern_stability >= 0.8:
+            convergence_detected = True
+
+        # Path 3: Strong loss trend with good stability
+        elif loss_trend <= -0.01 and stability >= 0.7:
+            convergence_detected = True
+
+        if convergence_detected:
             result['detected'] = True
             result['confidence'] = min(1.0, (stability + pattern_stability) / 2)
             result['details'] = {
@@ -283,7 +303,8 @@ class PatternInterpreter:
             return 'unstable'
 
     def _extract_skill_indicators(self, emerging_patterns: List[Dict[str, Any]],
-                                  pattern_summary: Dict[str, Any]) -> List[Dict[str, Any]]:
+                              pattern_summary: Dict[str, Any],
+                              cluster_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Extract indicators of emerging skills."""
         indicators = []
 
@@ -296,6 +317,7 @@ class PatternInterpreter:
                         'description': f"Action {pattern.get('action')} yields positive rewards",
                         'confidence': pattern.get('confidence', 0),
                         'evidence': {
+                            'action': pattern.get('action'),
                             'frequency': pattern.get('frequency', 0),
                             'average_reward': pattern.get('average_reward', 0)
                         }
@@ -325,6 +347,29 @@ class PatternInterpreter:
                     'evidence': {
                         'action': action,
                         'average_reward': avg_reward
+                    }
+                })
+
+        # Add cluster-based skill indicators when cluster_context is provided
+        if cluster_context:
+            indicators.append({
+                'type': 'cluster_membership',
+                'description': f'Belongs to cluster {cluster_context["cluster_id"]} with high confidence',
+                'confidence': cluster_context.get('confidence', 0),
+                'evidence': {
+                    'cluster_id': cluster_context['cluster_id'],
+                    'cluster_confidence': cluster_context.get('confidence', 0)
+                }
+            })
+
+            if 'recommended_action' in cluster_context:
+                indicators.append({
+                    'type': 'cluster_action_preference',
+                    'description': f'Cluster recommends action {cluster_context["recommended_action"]}',
+                    'confidence': cluster_context.get('action_confidence', 0),
+                    'evidence': {
+                        'recommended_action': cluster_context['recommended_action'],
+                        'expected_reward': cluster_context.get('expected_reward', 0)
                     }
                 })
 

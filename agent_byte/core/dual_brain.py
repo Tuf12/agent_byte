@@ -74,13 +74,15 @@ class DualBrain:
         # Neural brain might use simplified version
         self.logger.info("Environment analysis set for dual brain")
 
-    def decide(self, state: np.ndarray, exploration_rate: float) -> int:
+    def decide(self, state: np.ndarray, exploration_rate: float,
+               latent_state: Optional[np.ndarray] = None) -> int:
         """
         Make a decision using the dual brain system.
 
         Args:
             state: Current state (256-dimensional)
             exploration_rate: Current exploration rate
+            latent_state: Optional latent state from autoencoder
 
         Returns:
             Selected action
@@ -91,8 +93,10 @@ class DualBrain:
         # Get neural insights for symbolic brain
         neural_insights = self.neural_brain.get_neural_insights()
 
-        # Symbolic brain interprets patterns
-        pattern_interpretation = self.symbolic_brain.interpret_neural_patterns(neural_insights)
+        # Symbolic brain interprets patterns with latent state
+        pattern_interpretation = self.symbolic_brain.interpret_neural_patterns(
+            neural_insights, latent_state
+        )
 
         # Discover new skills if any
         discovered_skills = self.symbolic_brain.discover_skills(pattern_interpretation)

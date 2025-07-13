@@ -14,7 +14,10 @@ from ..storage.base import StorageBase
 from ..knowledge.skill_discovery import SkillDiscovery
 from ..knowledge.pattern_interpreter import PatternInterpreter
 from ..knowledge.decision_maker import SymbolicDecisionMaker
-
+from ..knowledge.skill_discovery import SkillDiscovery
+from ..knowledge.pattern_interpreter import PatternInterpreter
+from ..knowledge.decision_maker import SymbolicDecisionMaker
+from ..knowledge.skill_classifier import SkillClassifierManager
 
 class SymbolicBrain:
     """

@@ -44,24 +44,9 @@ class SymbolicDecisionMaker:
         }
 
     def decide(self, context: Dict[str, Any]) -> Tuple[Optional[int], str, float]:
-        """
-        Make a symbolic decision based on context.
+        """Make a symbolic decision based on context."""
+        self.context = context  # Store context for strategies
 
-        Args:
-            context: Decision context including:
-                - state: Current state
-                - q_values: Q-values from neural network
-                - exploration_rate: Current exploration rate
-                - discovered_skills: Available skills
-                - recent_patterns: Recent behavioral patterns
-                - environment_analysis: Environment understanding
-
-        Returns:
-            Tuple of (action, reasoning, confidence):
-                - action: Selected action or None to defer to neural
-                - reasoning: Explanation of decision
-                - confidence: Confidence in the decision (0-1)
-        """
         # Extract context
         state = context.get('state', np.array([]))
         q_values = context.get('q_values', np.array([]))
@@ -69,6 +54,22 @@ class SymbolicDecisionMaker:
         skills = context.get('discovered_skills', {})
         patterns = context.get('recent_patterns', [])
         env_analysis = context.get('environment_analysis', {})
+
+        # PRIORITY CHECK: Handle skill_predictions directly here (not in strategy)
+        skill_predictions = context.get('skill_predictions', [])
+        if skill_predictions:
+            best_skill_id, best_confidence = skill_predictions[0]
+
+            if best_skill_id in skills:
+                skill_data = skills[best_skill_id]
+                skill = skill_data.get('skill', {})
+
+                # Extract action from skill
+                action = self._extract_action_from_skill(skill, q_values)
+
+                if action is not None:
+                    reasoning = f"Classifier selected skill '{skill.get('name', 'unknown')}' (confidence: {best_confidence:.2f})"
+                    return action, reasoning, best_confidence
 
         # Select decision strategy
         strategy_name, strategy_func = self._select_strategy(
@@ -117,16 +118,28 @@ class SymbolicDecisionMaker:
     def _skill_based_decision(self, state: np.ndarray, q_values: np.ndarray,
                               skills: Dict[str, Any], patterns: List[Dict[str, Any]],
                               env_analysis: Dict[str, Any]) -> Tuple[Optional[int], str, float]:
-        """Make decision based on discovered skills."""
-        # Find applicable skills
-        applicable_skills = []
+        if not skills:
+            return None, "No skills available", 0.0
 
+        skill_predictions = self.context.get('skill_predictions', [])
+        if skill_predictions:
+            best_skill_id, best_confidence = skill_predictions[0]
+            if best_skill_id in skills:
+                skill_data = skills[best_skill_id]
+                skill = skill_data.get('skill', {})
+                action = self._extract_action_from_skill(skill, q_values)
+                if action is not None:
+                    reasoning = f"Classifier selected skill '{skill.get('name', 'unknown')}' (confidence: {best_confidence:.2f})"
+                    return action, reasoning, best_confidence
+                else:
+                    self.logger.warning(f"Could not extract action from skill: {skill}")
+
+        # Fallback logic (unchanged)
+        applicable_skills = []
         for skill_id, skill_data in skills.items():
             skill = skill_data.get('skill', {})
             confidence = skill_data.get('confidence', 0)
-
             if confidence > self.strategy_thresholds['confidence_threshold']:
-                # Check if skill is applicable
                 if self._is_skill_applicable(skill, state, patterns):
                     applicable_skills.append({
                         'skill': skill,
@@ -137,18 +150,13 @@ class SymbolicDecisionMaker:
         if not applicable_skills:
             return None, "No applicable skills found", 0.0
 
-        # Select best skill
         best_skill_info = max(applicable_skills, key=lambda x: x['relevance'] * x['data']['confidence'])
         best_skill = best_skill_info['skill']
-
-        # Determine action from skill
         action = self._extract_action_from_skill(best_skill, q_values)
-
         if action is not None:
             confidence = best_skill_info['data']['confidence'] * best_skill_info['relevance']
             reasoning = f"Applied skill '{best_skill['name']}': {best_skill['description']}"
             return action, reasoning, confidence
-
         return None, "Could not extract action from skill", 0.0
 
     def _pattern_based_decision(self, state: np.ndarray, q_values: np.ndarray,
@@ -350,39 +358,24 @@ class SymbolicDecisionMaker:
         """Extract concrete action from skill definition."""
         parameters = skill.get('parameters', {})
 
-        # Direct action specification
+        # Prioritize target_action
         if 'target_action' in parameters:
             action = parameters['target_action']
             if isinstance(action, int) and 0 <= action < len(q_values):
                 return action
 
-        # Dominant action specification
+        # Fallback to dominant_action
         if 'dominant_action' in parameters:
             action = parameters['dominant_action']
             if isinstance(action, int) and 0 <= action < len(q_values):
                 return action
 
-        # For abstract skills, use skill type heuristics
+        # Fallback to Q-value-based action for action_optimization skills
         skill_type = skill.get('type', '')
-
-        if skill_type == 'action_optimization':
-            # Use best Q-value action
+        if skill_type == 'action_optimization' and len(q_values) > 0:
             return int(np.argmax(q_values))
 
-        elif skill_type == 'exploratory_strategy':
-            # Use non-greedy action
-            if len(q_values) > 1:
-                sorted_actions = np.argsort(q_values)
-                return int(sorted_actions[-2])  # Second best
-
-        elif skill_type == 'adaptive_behavior':
-            # Use probabilistic selection based on Q-values
-            if len(q_values) > 0:
-                # Softmax selection
-                exp_q = np.exp(q_values - np.max(q_values))
-                probs = exp_q / np.sum(exp_q)
-                return int(np.random.choice(len(q_values), p=probs))
-
+        self.logger.warning(f"Could not extract action from skill: {skill}")
         return None
 
     def _record_decision(self, strategy: str, action: Optional[int],

@@ -6,10 +6,14 @@ hard-coded environment knowledge, enabling true environment-agnostic learning.
 """
 
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import uuid
 import time
 import logging
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from collections import defaultdict, Counter
+import torch
 
 
 class SkillDiscovery:
@@ -41,6 +45,93 @@ class SkillDiscovery:
         self.confidence_threshold = 0.6
         self.evidence_threshold = 3
 
+        # Clustering support for skill discovery
+        self.experience_buffer = []
+        self.clustering_interval = 100
+        self.experiences_since_clustering = 0
+        self.min_cluster_size = 5
+    def _add_to_experience_buffer(self, latent_state: np.ndarray, action: int,
+                                 reward: float, pattern_interpretation: Dict[str, Any]):
+        """Add experience to clustering buffer."""
+        experience = {
+            'latent_state': latent_state,
+            'action': action,
+            'reward': reward,
+            'pattern_interpretation': pattern_interpretation,
+            'timestamp': time.time()
+        }
+        self.experience_buffer.append(experience)
+        self.experiences_since_clustering += 1
+
+        # Keep buffer size manageable
+        if len(self.experience_buffer) > 1000:
+            self.experience_buffer = self.experience_buffer[-500:]
+
+
+    def _cluster_based_discovery(self) -> List[Dict[str, Any]]:
+        """Discover skills through clustering experiences."""
+        if len(self.experience_buffer) < self.min_cluster_size:
+            return []
+
+        skills = []
+
+        try:
+            # Prepare data for clustering
+            states = np.array([exp['latent_state'] for exp in self.experience_buffer])
+            actions = np.array([exp['action'] for exp in self.experience_buffer])
+            rewards = np.array([exp['reward'] for exp in self.experience_buffer])
+
+            # Combine state and action for clustering
+            features = np.column_stack([states, actions.reshape(-1, 1)])
+
+            # Use KMeans clustering
+            n_clusters = min(8, max(2, len(self.experience_buffer) // 20))
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            cluster_labels = kmeans.fit_predict(features)
+
+            # Analyze each cluster
+            for cluster_id in range(n_clusters):
+                cluster_mask = cluster_labels == cluster_id
+                cluster_experiences = [self.experience_buffer[i] for i in range(len(self.experience_buffer)) if cluster_mask[i]]
+
+                if len(cluster_experiences) >= self.min_cluster_size:
+                    # Analyze cluster
+                    cluster_actions = [exp['action'] for exp in cluster_experiences]
+                    cluster_rewards = [exp['reward'] for exp in cluster_experiences]
+
+                    dominant_action = max(set(cluster_actions), key=cluster_actions.count)
+                    avg_reward = np.mean(cluster_rewards)
+
+                    if avg_reward > 0:  # Only consider positive clusters
+                        skill = {
+                            'name': f'cluster_skill_{cluster_id}',
+                            'type': 'cluster_behavior',
+                            'description': f'Learned behavior from cluster {cluster_id}',
+                            'confidence': min(1.0, len(cluster_experiences) / 50.0),
+                            'abstraction_level': 'tactical',
+                            'discovered_via': 'clustering',
+                            'timestamp': time.time(),
+                            'evidence': {
+                                'cluster_id': cluster_id,
+                                'cluster_size': len(cluster_experiences),
+                                'dominant_action': dominant_action,
+                                'average_reward': avg_reward
+                            },
+                            'parameters': {
+                                'cluster_center': kmeans.cluster_centers_[cluster_id].tolist(),
+                                'dominant_action': dominant_action
+                            }
+                        }
+                        skill['id'] = self._generate_skill_id(skill)
+                        skills.append(skill)
+
+        except Exception as e:
+            self.logger.warning(f"Clustering-based discovery failed: {e}")
+
+        return skills
+
+
+
     def discover(self, pattern_interpretation: Dict[str, Any],
                  existing_skills: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -65,6 +156,12 @@ class SkillDiscovery:
                     skill['discovered_via'] = template_name
                     skill['timestamp'] = time.time()
                     discovered_skills.append(skill)
+
+        # Add clustering-based discovery
+        if self.experiences_since_clustering >= self.clustering_interval and len(self.experience_buffer) >= 50:
+            clustering_skills = self._cluster_based_discovery()
+            discovered_skills.extend(clustering_skills)
+            self.experiences_since_clustering = 0
 
         # Attempt to abstract existing skills
         abstract_skills = self._discover_abstract_skills(
@@ -541,3 +638,116 @@ class SkillDiscovery:
             return True
 
         return False
+
+    def categorize_skill(self, skill: Dict[str, Any]) -> str:
+        """
+        Categorize skill into chess-inspired taxonomy.
+
+        Args:
+            skill: Skill to categorize
+
+        Returns:
+            Category name (tactical/positional/strategic)
+        """
+        # Default to tactical
+        category = 'tactical'
+
+        # Analyze skill characteristics
+        confidence = skill.get('confidence', 0)
+        abstraction = skill.get('abstraction_level', 'concrete')
+        evidence = skill.get('evidence', {})
+
+        # Strategic skills: high abstraction, high confidence, broad impact
+        if abstraction in ['strategic', 'meta'] and confidence > 0.8:
+            category = 'strategic'
+
+        # Positional skills: medium abstraction, pattern-based
+        elif abstraction == 'tactical' and confidence > 0.6:
+            if 'behavioral_state' in evidence or 'learning_phase' in evidence:
+                category = 'positional'
+
+        # Tactical skills: concrete, immediate reward
+        else:
+            if evidence.get('average_reward', 0) > 0:
+                category = 'tactical'
+
+        return category
+
+    def score_skill(self, skill: Dict[str, Any]) -> float:
+        """
+        Score skill quality for ranking and selection.
+
+        Args:
+            skill: Skill to score
+
+        Returns:
+            Score value (0-1)
+        """
+        score = 0.0
+
+        # Base score from confidence
+        score += skill.get('confidence', 0) * 0.4
+
+        # Success rate contribution
+        if 'success_rate' in skill:
+            score += skill['success_rate'] * 0.3
+
+        # Evidence quality
+        evidence = skill.get('evidence', {})
+        if 'cluster_size' in evidence:
+            # Larger clusters are more reliable
+            cluster_score = min(1.0, evidence['cluster_size'] / 100)
+            score += cluster_score * 0.2
+
+        if 'average_reward' in evidence:
+            # Normalize reward contribution
+            reward_score = min(1.0, max(0.0, evidence['average_reward'] / 10.0))
+            score += reward_score * 0.1
+
+        # Abstraction level bonus
+        abstraction_scores = {
+            'concrete': 0.0,
+            'tactical': 0.05,
+            'strategic': 0.1,
+            'meta': 0.15
+        }
+        score += abstraction_scores.get(skill.get('abstraction_level', 'concrete'), 0)
+
+        return min(1.0, score)
+
+    def get_skill_hierarchy(self, skills: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Organize skills into hierarchical taxonomy.
+
+        Args:
+            skills: Dictionary of all skills
+
+        Returns:
+            Hierarchical organization by category
+        """
+        hierarchy = {
+            'tactical': [],
+            'positional': [],
+            'strategic': []
+        }
+
+        for skill_id, skill_data in skills.items():
+            skill = skill_data.get('skill', {})
+            category = self.categorize_skill(skill)
+            score = self.score_skill(skill)
+
+            skill_info = {
+                'id': skill_id,
+                'name': skill['name'],
+                'score': score,
+                'confidence': skill.get('confidence', 0),
+                'applications': skill_data.get('application_count', 0)
+            }
+
+            hierarchy[category].append(skill_info)
+
+        # Sort each category by score
+        for category in hierarchy:
+            hierarchy[category].sort(key=lambda x: x['score'], reverse=True)
+
+        return hierarchy

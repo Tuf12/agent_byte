@@ -278,8 +278,19 @@ class AgentByte:
         if self.dual_brain is None:
             self._initialize_dual_brain(env.get_action_size())
 
+        # Get latent state if autoencoder is available
+        latent_state = None
+        env_id = env.get_id()
+        if (self.state_normalizer.use_autoencoder and
+                self.state_normalizer.autoencoder_trainer and
+                env_id in self.state_normalizer.autoencoder_trainer.autoencoders):
+            autoencoder = self.state_normalizer.autoencoder_trainer.autoencoders[env_id]
+            # Get the raw state for autoencoder
+            raw_state = env.reset() if not hasattr(self, '_last_raw_state') else self._last_raw_state
+            latent_state = autoencoder.compress(raw_state)
+
         # Make a decision using dual brain
-        action = self.dual_brain.decide(normalized_state, self.config.exploration_rate)
+        action = self.dual_brain.decide(normalized_state, self.config.exploration_rate, latent_state)
 
         return action
 

@@ -31,7 +31,7 @@ flake8>=5.0.0
 mypy>=0.990
 
 # For autoencoders in Sprint 2
-# scikit-learn>=1.2.0
+scikit-learn>=1.2.0
 
 # Note: These appear to be internal packages or typos - commenting out
 # setuptools~=80.9.0  # Usually comes with Python

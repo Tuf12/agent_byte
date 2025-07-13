@@ -109,78 +109,64 @@ class TransferMapper:
 
         return mapped_knowledge
 
-    def _analyze_environment_compatibility(self, source_knowledge: Dict[str, Any],
-                                           target_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def _analyze_environment_compatibility(self, source: Dict[str, Any],
+                                           target: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze compatibility between source and target environments."""
-        compatibility = {
-            'structural_similarity': 0.0,
-            'behavioral_similarity': 0.0,
-            'action_space_compatibility': 0.0,
-            'state_space_compatibility': 0.0,
-            'reward_structure_similarity': 0.0,
-            'overall_compatibility': 0.0
-        }
+        compatibility = {}
 
-        # Compare action spaces
-        source_actions = source_knowledge.get('action_size', 0)
-        target_actions = target_analysis.get('action_size', 0)
+        # Action space compatibility
+        source_actions = source.get('action_size', 0)
+        target_actions = target.get('action_size', 0)
 
         if source_actions > 0 and target_actions > 0:
-            compatibility['action_space_compatibility'] = min(
-                source_actions / target_actions,
-                target_actions / source_actions
-            )
+            action_compat = min(source_actions, target_actions) / max(source_actions, target_actions)
+        else:
+            action_compat = 0.0
 
-        # Compare state spaces
-        source_states = source_knowledge.get('state_size', 0)
-        target_states = target_analysis.get('state_size', 0)
+        compatibility['action_space_compatibility'] = action_compat
+
+        # State space compatibility
+        source_states = source.get('state_size', 0)
+        target_states = target.get('state_size', 0)
 
         if source_states > 0 and target_states > 0:
-            compatibility['state_space_compatibility'] = min(
-                source_states / target_states,
-                target_states / source_states
-            )
-
-        # Compare reward structures
-        source_reward_type = source_knowledge.get('reward_type', 'unknown')
-        target_reward_type = target_analysis.get('reward_analysis', {}).get('reward_types', 'unknown')
-
-        if source_reward_type == target_reward_type:
-            compatibility['reward_structure_similarity'] = 1.0
-        elif 'sparse' in source_reward_type and 'sparse' in target_reward_type:
-            compatibility['reward_structure_similarity'] = 0.8
-        elif 'continuous' in source_reward_type and 'continuous' in target_reward_type:
-            compatibility['reward_structure_similarity'] = 0.8
+            state_compat = min(source_states, target_states) / max(source_states, target_states)
         else:
-            compatibility['reward_structure_similarity'] = 0.3
+            state_compat = 0.0
 
-        # Calculate structural similarity
-        compatibility['structural_similarity'] = np.mean([
-            compatibility['action_space_compatibility'],
-            compatibility['state_space_compatibility'],
-            compatibility['reward_structure_similarity']
-        ])
+        compatibility['state_space_compatibility'] = state_compat
 
-        # Analyze behavioral similarity based on environment types
-        source_env_type = source_knowledge.get('environment_type', 'unknown')
-        target_env_type = target_analysis.get('environment_type', 'unknown')
+        # Reward type compatibility
+        source_reward = source.get('reward_type', '')
+        target_reward_analysis = target.get('reward_analysis', {})
+        target_reward = target_reward_analysis.get('reward_types', '')
 
-        if source_env_type == target_env_type:
-            compatibility['behavioral_similarity'] = 0.9
-        elif source_env_type in ['control', 'continuous_control'] and target_env_type in ['control',
-                                                                                          'continuous_control']:
-            compatibility['behavioral_similarity'] = 0.7
-        elif source_env_type in ['goal_oriented', 'sparse_reward'] and target_env_type in ['goal_oriented',
-                                                                                           'sparse_reward']:
-            compatibility['behavioral_similarity'] = 0.6
+        if source_reward and target_reward:
+            reward_compat = 1.0 if source_reward == target_reward else 0.5
         else:
-            compatibility['behavioral_similarity'] = 0.3
+            reward_compat = 0.5
 
-        # Calculate overall compatibility
-        compatibility['overall_compatibility'] = np.mean([
-            compatibility['structural_similarity'] * 0.4,
-            compatibility['behavioral_similarity'] * 0.6
-        ])
+        compatibility['reward_compatibility'] = reward_compat
+
+        # Environment type compatibility
+        source_env = source.get('environment_type', '')
+        target_env = target.get('environment_type', '')
+
+        if source_env and target_env:
+            env_compat = 1.0 if source_env == target_env else 0.3
+        else:
+            env_compat = 0.5
+
+        compatibility['environment_type_compatibility'] = env_compat
+
+        # Add behavioral similarity (CRITICAL FIX for missing key)
+        compatibility['behavioral_similarity'] = min(1.0, (action_compat + state_compat + env_compat) / 3.0)
+
+        # Calculate overall compatibility with balanced weighting
+        scores = [action_compat, state_compat, reward_compat, env_compat]
+        weights = [0.3, 0.3, 0.2, 0.2]
+
+        compatibility['overall_compatibility'] = sum(s * w for s, w in zip(scores, weights))
 
         return compatibility
 
