@@ -10,6 +10,15 @@ Part 2 focuses on addressing critical implementation gaps and architectural conc
 - Enable actual gradient-based learning
 - Maintain compatibility with existing interfaces
 
+### Question Asked
+Neural Network Implementation
+The StandardizedNetwork class has placeholders for actual learning:
+# Line in neural_brain.py:
+# Update network weights (simplified)
+# In a real implementation, this would involve proper backpropagation
+Are you planning to implement the actual backpropagation, or integrate with PyTorch/TensorFlow?
+The current implementation won't actually update the network weights
+
 ### Tasks
 
 #### 1.1 Create PyTorch Network Module
@@ -48,6 +57,12 @@ Part 2 focuses on addressing critical implementation gaps and architectural conc
 - Enable environment-specific state encoding
 - Maintain 256D standardized representation
 
+### Question Asked
+State Normalization Edge Cases
+In state_normalizer.py, the dimensional reduction/expansion could lose critical information:
+
+When reducing from >256 dims, using evenly spaced sampling might miss important features
+Consider using PCA or autoencoders for better dimensionality reduction?
 ### Tasks
 
 #### 2.1 Create Autoencoder Architecture
@@ -88,6 +103,13 @@ Part 2 focuses on addressing critical implementation gaps and architectural conc
 - Implement lazy loading for experience vectors
 - Add vector database support
 - Enable efficient similarity search at scale
+
+### Question Asked
+Experience Vector Storage Scalability
+The JsonNumpyStorage loads all experience vectors into memory:
+self._experience_vectors: Dict[str, List[Dict[str, Any]]] = {}
+This could become a memory issue with many agents/environments
+Consider implementing lazy loading or pagination?
 
 ### Tasks
 
@@ -141,6 +163,16 @@ Option 3: Hybrid (SQLite + FAISS)
 - Implement clustering-based skill discovery
 - Add skill applicability classifiers
 
+### Question Asked
+Skill Discovery Abstraction
+The skill discovery system has hard-coded templates and conditions:
+if when == 'similar_state_encountered':
+    return True
+elif when == 'high_confidence_action_available':
+    return len(patterns) > 0
+How will this generalize to truly novel environments?
+Consider making the applicability conditions more data-driven?
+
 ### Tasks
 
 #### 4.1 Statistical Skill Discovery
@@ -175,6 +207,14 @@ Option 3: Hybrid (SQLite + FAISS)
 - Add comprehensive error handling
 - Implement checkpointing system
 - Create recovery mechanisms
+
+### Question Asked
+5. Missing Error Recovery
+Several critical paths lack proper error handling:
+
+What happens if an environment crashes during training?
+Storage failures could corrupt agent state
+Consider adding checkpointing and recovery mechanisms?
 
 ### Tasks
 
@@ -211,6 +251,13 @@ Option 3: Hybrid (SQLite + FAISS)
 - Add adaptive transfer strategies
 - Create transfer success metrics
 
+### Question Asked
+Transfer Learning Validation
+The transfer mapper calculates compatibility but doesn't validate if transferred skills actually work:
+
+Should there be a validation phase after transfer?
+Track transfer success rates for adaptive transfer strategies?
+
 ### Tasks
 
 #### 6.1 Transfer Validation Pipeline
@@ -246,23 +293,55 @@ Option 3: Hybrid (SQLite + FAISS)
 - Create factory methods for complex objects
 - Add initialization state tracking
 
+### Question Asked
+7. Circular Dependencies Concern
+The dual brain system has potential circular dependencies:
+SymbolicBrain depends on neural insights
+NeuralBrain patterns inform symbolic decisions
+Need careful initialization order
+
 ### 8. Configuration Management Enhancement
 - Create environment-specific config system
 - Add config validation
 - Implement config inheritance
 - Create config migration tools
+- 
+### Question Asked
+8. Configuration Management
+While config.py exists, many modules use hard-coded values from constants.py:
+
+Should configuration be more centralized?
+Environment-specific configs might be needed despite being "agnostic"
 
 ### 9. Continuous Action Space Support
 - Implement Soft Actor-Critic (SAC) for continuous control
 - Add action discretization strategies
 - Create hybrid discrete-continuous support
 - Implement action space adapters
+- 
+### Question Asked
+9. Continuous Action Spaces
+The GymnasiumAdapter has a simplified discretization:
+# Map discrete action to continuous
+if action == 0:
+    return np.array([low])
+elif action == 1:
+    return np.array([(low + high) / 2])
+This won't work well for complex continuous control
+Consider parameterized action spaces?
 
 ### 10. Performance Profiling System
 - Add timing decorators throughout
 - Implement performance tracking
 - Create bottleneck identification
 - Add optimization recommendations
+- 
+### Question Asked
+10. Performance Profiling
+No apparent performance monitoring:
+
+How will you identify bottlenecks?
+Consider adding timing/profiling decorators?
 
 ## Implementation Timeline
 
