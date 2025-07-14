@@ -29,6 +29,10 @@ class TransferMapper:
         self.transfer_history = []
         self.transfer_success_metrics = {}
 
+        # NEW: Add validation tracking
+        self.validation_metrics = {}
+        self.transfer_validators = {}
+
         # Similarity thresholds
         self.thresholds = {
             'structural_similarity': 0.6,
@@ -465,7 +469,8 @@ class TransferMapper:
         metrics['total_skills'] += transfer_record['skills_transferred']
 
     def update_transfer_outcome(self, source_env: str, target_env: str,
-                                performance_improvement: float):
+                                performance_improvement: float,
+                                detailed_metrics: Dict[str, Any] = None):
         """Update transfer success metrics with actual performance."""
         env_pair = f"{source_env}->{target_env}"
 
@@ -478,6 +483,73 @@ class TransferMapper:
 
             # Calculate average improvement
             metrics['average_improvement'] = np.mean(metrics['performance_improvements'])
+
+            # NEW: Add detailed metrics if provided
+            if detailed_metrics:
+                metrics['detailed_performance'] = detailed_metrics
+                metrics['adaptation_time'] = detailed_metrics.get('adaptation_time', 0)
+                metrics['skill_retention'] = detailed_metrics.get('skill_retention', 0.0)
+
+            # Store validation metrics
+            if env_pair not in self.validation_metrics:
+                self.validation_metrics[env_pair] = {}
+
+            self.validation_metrics[env_pair]['last_validation'] = {
+                'performance_improvement': performance_improvement,
+                'timestamp': time.time(),
+                'detailed_metrics': detailed_metrics
+            }
+    def validate_transfer(self, source_env: str, target_env: str,
+                          transferred_skills: Dict[str, Any],
+                          target_performance: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate transferred skills performance."""
+        env_pair = f"{source_env}->{target_env}"
+
+        # Get baseline from when transfer was applied
+        baseline = self.validation_metrics.get(env_pair, {}).get('baseline_performance', {})
+
+        # Calculate performance delta
+        performance_delta = target_performance.get('average_reward', 0) - baseline.get('average_reward', 0)
+        adaptation_time = target_performance.get('step_count', 0) - baseline.get('step_count', 0)
+
+        # Validate each transferred skill
+        skill_validations = {}
+        for skill_id, skill_data in transferred_skills.items():
+            skill_validations[skill_id] = {
+                'predicted_performance': skill_data.get('confidence', 0),
+                'actual_performance': skill_data.get('success_rate', 0),
+                'validation_status': 'success' if skill_data.get('success_rate', 0) > 0.5 else 'needs_adaptation'
+            }
+
+        validation_result = {
+            'performance_delta': performance_delta,
+            'adaptation_time': adaptation_time,
+            'overall_success': performance_delta > 0.1,
+            'skill_validations': skill_validations,
+            'recommendations': self._generate_validation_recommendations(skill_validations)
+        }
+
+        # Update transfer success metrics
+        self.update_transfer_outcome(source_env, target_env, performance_delta, validation_result)
+
+        return validation_result
+
+    def get_adaptive_transfer_strategy(self, source_env: str, target_env: str) -> str:
+        """Select best transfer strategy based on validation history."""
+        env_pair = f"{source_env}->{target_env}"
+
+        if env_pair in self.transfer_success_metrics:
+            metrics = self.transfer_success_metrics[env_pair]
+
+            # Check which strategies worked best
+            if 'strategy_performance' in metrics:
+                best_strategy = max(metrics['strategy_performance'],
+                                    key=lambda x: metrics['strategy_performance'][x])
+                return best_strategy
+
+        # Default strategy selection based on environment compatibility
+        return 'direct_transfer'  # fallback to existing logic
+
 
     def get_transfer_recommendations(self, source_env: str,
                                      available_targets: List[str]) -> List[Dict[str, Any]]:
@@ -519,3 +591,28 @@ class TransferMapper:
         recommendations.sort(key=lambda x: x['recommendation_score'], reverse=True)
 
         return recommendations
+
+    def _generate_validation_recommendations(self, skill_validations: Dict[str, Any]) -> List[str]:
+        """Generate recommendations based on validation results."""
+        recommendations = []
+
+        successful_skills = [sid for sid, val in skill_validations.items()
+                             if val['validation_status'] == 'success']
+        failed_skills = [sid for sid, val in skill_validations.items()
+                         if val['validation_status'] == 'needs_adaptation']
+
+        if len(successful_skills) > len(failed_skills):
+            recommendations.append(f"Transfer largely successful: {len(successful_skills)} skills working well")
+        else:
+            recommendations.append(f"Transfer needs adaptation: {len(failed_skills)} skills underperforming")
+
+        if failed_skills:
+            recommendations.append("Consider retraining underperforming transferred skills")
+
+        if successful_skills:
+            recommendations.append("Successful skills can be used as foundation for further learning")
+
+        return recommendations
+
+
+

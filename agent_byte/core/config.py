@@ -46,6 +46,12 @@ class AgentConfig:
     # Performance tracking
     performance_window: int = 100  # Episodes to calculate metrics over
 
+    # NEW: Transfer validation parameters
+    transfer_validation_interval: int = 100  # Steps between validations
+    validation_window_size: int = 50  # Episodes for performance comparison
+    transfer_success_threshold: float = 0.1  # Minimum improvement needed
+    adaptive_transfer_enabled: bool = True  # Enable strategy adaptation
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for serialization."""
         return {

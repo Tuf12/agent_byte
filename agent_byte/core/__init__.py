@@ -5,6 +5,7 @@
 from .agent import AgentByte
 from .config import AgentConfig, NetworkConfig, StorageConfig, EnvironmentMetadata
 from .interfaces import Environment, Storage
+from .checkpoint_manager import CheckpointManager
 
 __all__ = [
     "AgentByte",
@@ -14,4 +15,5 @@ __all__ = [
     "EnvironmentMetadata",
     "Environment",
     "Storage",
+    "checkpoint_manager",
 ]

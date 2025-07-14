@@ -1,0 +1,136 @@
+
+# Sprint 9 & 10: Continuous Action Space + Performance Profiling
+
+## Sprint 9: Continuous Action Space Support
+
+### Current Limitation
+- Interface only supports discrete actions: `step(action: int)`
+- No support for continuous control tasks like robotics, physics simulations
+
+### 9.1 Enhanced Environment Interface
+
+**File**: `core/interfaces.py` (MODIFY EXISTING)
+
+**Changes**:
+- Add action space type detection
+- Support both discrete and continuous actions
+- Maintain backward compatibility
+
+### 9.2 Action Space Adapters
+
+**File**: `core/action_adapters.py` (NEW)
+
+**Components**:
+- `DiscreteToContiunousAdapter` - Convert discrete actions to continuous
+- `ContinuousToDiscreteAdapter` - Discretize continuous spaces
+- `HybridActionAdapter` - Handle mixed action spaces
+- `ParameterizedActionAdapter` - Neural parameterized actions
+
+### 9.3 Continuous Neural Networks
+
+**File**: `core/continuous_network.py` (NEW)
+
+**Implementation**:
+- Soft Actor-Critic (SAC) for continuous control
+- Deterministic Policy Gradient methods
+- Action bounds and normalization
+
+### 9.4 Enhanced Dual Brain
+
+**File**: `core/dual_brain.py` (MODIFY EXISTING)
+
+**Enhancements**:
+- Detect action space type
+- Route to appropriate network (discrete/continuous)
+- Handle action space adaptation
+
+## Sprint 10: Performance Profiling System
+
+### Current Gap
+- No performance monitoring or bottleneck identification
+- Hard to optimize learning or transfer performance
+
+### 10.1 Profiling Decorators
+
+**File**: `utils/profiler.py` (NEW)
+
+**Components**:
+- `@profile_method` - Time function execution
+- `@profile_memory` - Track memory usage
+- `@profile_gpu` - Monitor GPU utilization
+
+### 10.2 Performance Analytics
+
+**File**: `analysis/performance_analyzer.py` (NEW)
+
+**Features**:
+- Bottleneck identification
+- Learning curve analysis
+- Transfer learning efficiency metrics
+- System resource optimization recommendations
+
+### 10.3 Real-time Monitoring
+
+**File**: `utils/monitor.py` (NEW)
+
+**Capabilities**:
+- Live performance dashboard
+- Automatic performance regression detection
+- Training optimization suggestions
+
+## Implementation Plan
+
+### Week 1: Continuous Action Foundations (Days 1-3)
+
+**Priority 1**: Extend interfaces for continuous actions
+**Priority 2**: Create basic action adapters
+**Priority 3**: Implement SAC-based continuous network
+
+### Week 2: Performance Profiling (Days 4-5)
+
+**Priority 1**: Add profiling decorators throughout codebase
+**Priority 2**: Create performance analyzer for bottleneck detection
+**Priority 3**: Build monitoring dashboard
+
+### Week 3: Integration & Testing (Days 6-7)
+
+**Priority 1**: Integration testing with continuous control environments
+**Priority 2**: Performance regression testing
+**Priority 3**: Documentation and examples
+
+## Expected Benefits
+
+### Sprint 9 Benefits:
+1. **Expanded Environment Support**: Work with robotics, physics, and control tasks
+2. **Better Action Resolution**: More precise control in complex environments
+3. **Transfer Learning**: Skills can transfer between discrete and continuous spaces
+
+### Sprint 10 Benefits:
+1. **Performance Optimization**: Identify and fix bottlenecks automatically
+2. **Training Efficiency**: Faster convergence and resource usage
+3. **Transfer Analysis**: Understand which transfers work best and why
+
+## Files to Create/Modify
+
+### New Files:
+- `core/action_adapters.py`
+- `core/continuous_network.py`
+- `utils/profiler.py`
+- `analysis/performance_analyzer.py`
+- `utils/monitor.py`
+- `examples/continuous_control_example.py`
+
+### Modified Files:
+- `core/interfaces.py` (enhance Environment interface)
+- `core/dual_brain.py` (add continuous action support)
+- `core/agent.py` (add profiling hooks)
+- `core/neural_brain.py` (support continuous networks)
+
+### Files Unchanged:
+- All existing class/function names maintained
+- Transfer learning system (already working)
+- Storage and knowledge systems
+- Current discrete action functionality
+
+**This plan will significantly expand your agent's capabilities while maintaining all existing functionality.**
+

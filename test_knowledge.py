@@ -612,6 +612,208 @@ def run_all_tests():
     return result.wasSuccessful()
 
 
+# Add this new test class to your test_knowledge.py file:
+
+class TestTransferValidation(unittest.TestCase):
+    """Test Sprint 6 transfer validation functionality."""
+
+    def setUp(self):
+        self.knowledge_system = KnowledgeSystem()
+        self.transfer_mapper = TransferMapper()
+
+    def test_transfer_validation_pipeline(self):
+        """Test the complete transfer validation pipeline."""
+        # Setup source environment with skills
+        self.knowledge_system._initialize_environment_knowledge('source_env')
+        source_env = self.knowledge_system.knowledge_base['environments']['source_env']
+
+        # Add a transferable skill
+        source_env['discovered_skills']['test_skill'] = {
+            'skill': {
+                'name': 'test_transferable_skill',
+                'type': 'action_optimization',
+                'abstraction_level': 'tactical'
+            },
+            'confidence': 0.8,
+            'success_rate': 0.7,
+            'application_count': 20
+        }
+
+        # Prepare and apply transfer
+        transfer_package = self.knowledge_system.prepare_transfer_package('source_env')
+        target_analysis = {
+            'env_id': 'target_env',
+            'state_size': 10,
+            'action_size': 3
+        }
+
+        result = self.knowledge_system.apply_transfer('target_env', transfer_package, target_analysis)
+
+        # Verify pending validation was created
+        target_env = self.knowledge_system.knowledge_base['environments']['target_env']
+        self.assertIn('pending_validation', target_env)
+        self.assertIn('transferred_skills', target_env['pending_validation'])
+
+    def test_validate_active_transfers(self):
+        """Test the validate_active_transfers method."""
+        # Setup environment with pending validation
+        self.knowledge_system._initialize_environment_knowledge('test_env')
+        env_knowledge = self.knowledge_system.knowledge_base['environments']['test_env']
+
+        # Add transferred skill and pending validation
+        env_knowledge['discovered_skills']['transferred_skill'] = {
+            'skill': {'name': 'test_skill'},
+            'confidence': 0.8,
+            'success_rate': 0.6,
+            'application_count': 10
+        }
+
+        env_knowledge['pending_validation'] = {
+            'pre_transfer_performance': {'average_reward': 0.5, 'step_count': 100},
+            'transferred_skills': {'transferred_skill': {}},
+            'transfer_timestamp': time.time(),
+            'source_environment': 'source_env'
+        }
+
+        # Test validation with improved performance
+        current_performance = {
+            'average_reward': 0.8,  # Improvement
+            'episode_length': 50,
+            'step_count': 150,
+            'timestamp': time.time()
+        }
+
+        result = self.knowledge_system.validate_active_transfers('test_env', current_performance)
+
+        # Should return validation result
+        self.assertIsNotNone(result)
+        self.assertIn('overall_success', result)
+        self.assertIn('performance_delta', result)
+
+    def test_transfer_validation_report(self):
+        """Test transfer validation reporting."""
+        # Setup some transfer metrics
+        env_pair = "source_env->test_env"
+        self.knowledge_system.transfer_mapper.transfer_success_metrics[env_pair] = {
+            'attempts': 5,
+            'total_confidence': 3.5,
+            'total_skills': 10,
+            'average_improvement': 0.3
+        }
+
+        report = self.knowledge_system.get_transfer_validation_report('test_env')
+
+        self.assertIn('target_environment', report)
+        self.assertIn('transfer_metrics', report)
+        self.assertIn('total_transfers_to_env', report)
+        self.assertEqual(report['target_environment'], 'test_env')
+
+    def test_transfer_mapper_validation(self):
+        """Test TransferMapper validation functionality."""
+        # Test skills with different success rates
+        transferred_skills = {
+            'good_skill': {
+                'confidence': 0.8,
+                'success_rate': 0.7  # Good performance
+            },
+            'bad_skill': {
+                'confidence': 0.6,
+                'success_rate': 0.3  # Poor performance
+            }
+        }
+
+        target_performance = {
+            'average_reward': 1.0,
+            'step_count': 200
+        }
+
+        # Mock baseline in validation_metrics
+        env_pair = "source->target"
+        self.transfer_mapper.validation_metrics[env_pair] = {
+            'baseline_performance': {
+                'average_reward': 0.5,
+                'step_count': 100
+            }
+        }
+
+        result = self.transfer_mapper.validate_transfer(
+            'source', 'target', transferred_skills, target_performance
+        )
+
+        # Check validation result structure
+        self.assertIn('performance_delta', result)
+        self.assertIn('overall_success', result)
+        self.assertIn('skill_validations', result)
+        self.assertIn('recommendations', result)
+
+        # Performance should show improvement
+        self.assertEqual(result['performance_delta'], 0.5)  # 1.0 - 0.5
+        self.assertTrue(result['overall_success'])  # > 0.1 threshold
+
+        # Check skill validations
+        self.assertEqual(result['skill_validations']['good_skill']['validation_status'], 'success')
+        self.assertEqual(result['skill_validations']['bad_skill']['validation_status'], 'needs_adaptation')
+
+    def test_adaptive_transfer_strategy(self):
+        """Test adaptive transfer strategy selection."""
+        # Setup historical performance data
+        env_pair = "env1->env2"
+        self.transfer_mapper.transfer_success_metrics[env_pair] = {
+            'strategy_performance': {
+                'direct_transfer': 0.8,
+                'scaled_transfer': 0.6,
+                'abstract_transfer': 0.4
+            }
+        }
+
+        strategy = self.transfer_mapper.get_adaptive_transfer_strategy('env1', 'env2')
+
+        # Should select the best performing strategy
+        self.assertEqual(strategy, 'direct_transfer')
+
+    def test_validation_recommendations(self):
+        """Test validation recommendation generation."""
+        skill_validations = {
+            'skill1': {'validation_status': 'success'},
+            'skill2': {'validation_status': 'success'},
+            'skill3': {'validation_status': 'needs_adaptation'}
+        }
+
+        recommendations = self.transfer_mapper._generate_validation_recommendations(skill_validations)
+
+        self.assertIsInstance(recommendations, list)
+        self.assertGreater(len(recommendations), 0)
+
+        # Should indicate mostly successful transfer
+        rec_text = ' '.join(recommendations)
+        self.assertIn('successful', rec_text.lower())
+
+
+# Also update the run_all_tests function to include the new test class:
+def run_all_tests():
+    """Run all knowledge system tests."""
+    test_classes = [
+        TestPatternInterpreter,
+        TestSkillDiscovery,
+        TestSkillClassifier,
+        TestSkillClassifierManager,
+        TestSymbolicDecisionMaker,
+        TestKnowledgeSystem,
+        TestTransferMapper,
+        TestTransferValidation  # NEW: Add Sprint 6 tests
+    ]
+
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+
+    for test_class in test_classes:
+        tests = loader.loadTestsFromTestCase(test_class)
+        suite.addTests(tests)
+
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+
+    return result.wasSuccessful()
 if __name__ == "__main__":
     success = run_all_tests()
     exit(0 if success else 1)

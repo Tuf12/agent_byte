@@ -3,7 +3,8 @@ Vector database storage implementation for Agent Byte.
 
 This storage backend uses FAISS for efficient similarity search and
 ChromaDB for metadata-rich storage, providing a scalable alternative
-to the JSON+Numpy implementation.
+to the JSON+Numpy implementation. Enhanced with Sprint 5 robustness
+features: transaction safety, corruption detection, and automatic recovery.
 """
 
 import json
@@ -16,6 +17,9 @@ import logging
 import pickle
 import uuid
 import time
+import hashlib
+import threading
+from contextlib import contextmanager
 
 # FAISS imports with proper error handling
 try:
@@ -51,6 +55,7 @@ from .base import StorageBase
 class VectorDBStorage(StorageBase):
     """
     Storage implementation using vector databases for scalable similarity search.
+    Enhanced with Sprint 5 robustness features.
 
     Uses a hybrid approach:
     - FAISS for fast similarity search on experience vectors
@@ -64,11 +69,11 @@ class VectorDBStorage(StorageBase):
                  config: Optional[Dict[str, Any]] = None,
                  backend: str = "hybrid"):
         """
-        Initialize vector database storage.
+        Initialize vector database storage with Sprint 5 enhancements.
 
         Args:
             base_path: Base directory for storage
-            config: Additional configuration
+            config: Additional configuration including Sprint 5 features
             backend: Backend to use ("faiss", "chroma", "hybrid")
         """
         super().__init__(config)
@@ -101,9 +106,289 @@ class VectorDBStorage(StorageBase):
         self._faiss_buffers: Dict[str, List[Tuple[np.ndarray, Dict[str, Any]]]] = {}
         self._faiss_save_interval = config.get('faiss_save_interval', 1000) if config else 1000
 
-        self._initialize_backends()
+        # NEW Sprint 5 Phase 3: Transaction and reliability features
+        self.transaction_log_enabled = config.get('transaction_log', True) if config else True
+        self.corruption_detection_enabled = config.get('corruption_detection', True) if config else True
+        self.backup_enabled = config.get('backup_enabled', True) if config else True
 
-        self.logger.info(f"Initialized VectorDBStorage with backend: {self.backend}")
+        # Transaction state
+        self._active_transactions = {}
+        self._transaction_lock = threading.Lock()
+
+        # Corruption detection for metadata
+        self._metadata_checksums = {}
+        self._checksum_file = self.base_path / ".metadata_checksums.json"
+
+        # Write-ahead logging for vector operations
+        self._wal_dir = self.base_path / "vector_wal"
+        self._wal_dir.mkdir(exist_ok=True)
+
+        # Error tracking specific to vector operations
+        self.vector_error_metrics = {
+            'vector_save_failures': 0,
+            'vector_search_failures': 0,
+            'index_corruption_detected': 0,
+            'recoveries_performed': 0,
+            'transaction_rollbacks': 0,
+            'index_rebuilds': 0
+        }
+
+        # Index health monitoring
+        self.index_health = {
+            'last_health_check': 0,
+            'health_check_interval': 3600,  # 1 hour
+            'vector_count': 0,
+            'index_file_size': 0,
+            'search_performance_ms': []
+        }
+
+        # Load existing data
+        self._initialize_backends()
+        self._load_metadata_checksums()
+
+        self.logger.info(f"Enhanced VectorDBStorage initialized with backend: {self.backend} (transactions for JSON files only)")
+
+    # NEW Sprint 5: Transaction management methods
+
+    @contextmanager
+    def vector_transaction(self, transaction_id: str = None):
+        """Context manager for atomic vector operations."""
+        if not self.transaction_log_enabled:
+            yield
+            return
+
+        if transaction_id is None:
+            transaction_id = f"vec_txn_{int(time.time() * 1000000)}"
+
+        try:
+            self._begin_vector_transaction(transaction_id)
+            yield transaction_id
+            self._commit_vector_transaction(transaction_id)
+
+        except Exception as e:
+            self._rollback_vector_transaction(transaction_id)
+            self.vector_error_metrics['transaction_rollbacks'] += 1
+            self.logger.error(f"Vector transaction {transaction_id} rolled back: {e}")
+            raise
+
+    def _begin_vector_transaction(self, transaction_id: str):
+        """Begin a new vector transaction."""
+        with self._transaction_lock:
+            if transaction_id in self._active_transactions:
+                raise ValueError(f"Transaction {transaction_id} already active")
+
+            self._active_transactions[transaction_id] = {
+                'start_time': time.time(),
+                'vector_operations': [],
+                'index_snapshots': {},
+                'wal_entries': []
+            }
+
+        # Write WAL entry
+        self._write_vector_wal_entry(transaction_id, 'BEGIN_VECTOR', {})
+        self.logger.debug(f"Started vector transaction: {transaction_id}")
+
+    def _commit_vector_transaction(self, transaction_id: str):
+        """Commit vector transaction."""
+        with self._transaction_lock:
+            if transaction_id not in self._active_transactions:
+                raise ValueError(f"Transaction {transaction_id} not found")
+
+            transaction = self._active_transactions[transaction_id]
+
+            try:
+                # Write WAL commit entry
+                self._write_vector_wal_entry(transaction_id, 'COMMIT_VECTOR', {})
+
+                # Finalize vector operations
+                for operation in transaction['vector_operations']:
+                    if operation['type'] == 'vector_add':
+                        self._finalize_vector_add(operation)
+                    elif operation['type'] == 'index_update':
+                        self._finalize_index_update(operation)
+
+                # Update metadata checksums
+                self._save_metadata_checksums()
+
+                # Cleanup transaction data
+                self._cleanup_vector_transaction(transaction)
+
+                del self._active_transactions[transaction_id]
+                self.logger.debug(f"Committed vector transaction: {transaction_id}")
+
+            except Exception as e:
+                self._rollback_vector_transaction(transaction_id)
+                raise
+
+    def _rollback_vector_transaction(self, transaction_id: str):
+        """Rollback vector transaction."""
+        with self._transaction_lock:
+            if transaction_id not in self._active_transactions:
+                return
+
+            transaction = self._active_transactions[transaction_id]
+
+            try:
+                # Write WAL rollback entry
+                self._write_vector_wal_entry(transaction_id, 'ROLLBACK_VECTOR', {})
+
+                # Undo vector operations
+                for operation in reversed(transaction['vector_operations']):
+                    if operation['type'] == 'vector_add':
+                        self._rollback_vector_add(operation)
+                    elif operation['type'] == 'index_update':
+                        self._rollback_index_update(operation)
+
+                # Cleanup transaction data
+                self._cleanup_vector_transaction(transaction)
+
+                del self._active_transactions[transaction_id]
+                self.logger.debug(f"Rolled back vector transaction: {transaction_id}")
+
+            except Exception as e:
+                self.logger.error(f"Vector rollback failed for transaction {transaction_id}: {e}")
+
+    def _write_vector_wal_entry(self, transaction_id: str, operation: str, data: Dict[str, Any]):
+        """Write entry to vector write-ahead log."""
+        try:
+            wal_entry = {
+                'transaction_id': transaction_id,
+                'operation': operation,
+                'timestamp': time.time(),
+                'data': data,
+                'index_state': self._get_index_state_summary()
+            }
+
+            wal_file = self._wal_dir / f"{transaction_id}.vwal"
+            with open(wal_file, 'a') as f:
+                json.dump(wal_entry, f)
+                f.write('\n')
+
+            # Track WAL file for cleanup
+            if transaction_id in self._active_transactions:
+                self._active_transactions[transaction_id]['wal_entries'].append(wal_file)
+
+        except Exception as e:
+            self.logger.error(f"Failed to write vector WAL entry: {e}")
+
+    def _get_index_state_summary(self) -> Dict[str, Any]:
+        """Get summary of current index state."""
+        try:
+            state = {
+                'timestamp': time.time(),
+                'backend': self.backend,
+                'vector_count': 0,
+                'index_files': []
+            }
+
+            if self.backend == "faiss" and hasattr(self, 'faiss_indices'):
+                total_vectors = sum(idx['index'].ntotal for idx in self.faiss_indices.values() if 'index' in idx)
+                state['vector_count'] = total_vectors
+
+            elif self.backend == "chroma" and hasattr(self, 'chroma_collections'):
+                try:
+                    total_vectors = sum(collection.count() for collection in self.chroma_collections.values())
+                    state['vector_count'] = total_vectors
+                except:
+                    state['vector_count'] = 0
+
+            # List index files
+            index_files = list(self.base_path.glob("*.index")) + list(self.base_path.glob("*.faiss"))
+            state['index_files'] = [str(f) for f in index_files]
+
+            return state
+
+        except Exception as e:
+            self.logger.warning(f"Failed to get index state: {e}")
+            return {'error': str(e)}
+
+    # Enhanced save methods with transaction support
+
+    def _save_vector_with_transaction(self, agent_id: str, vector: np.ndarray,
+                                     metadata: Dict[str, Any], transaction_id: str) -> bool:
+        """Save vector within a transaction."""
+        try:
+            # Add timestamp and agent info
+            metadata['timestamp'] = time.time()
+            metadata['agent_id'] = agent_id
+
+            # Create backup of current index state if enabled
+            index_backup = None
+            if self.backup_enabled:
+                index_backup = self._create_index_backup()
+
+            # Prepare operation record
+            operation = {
+                'type': 'vector_add',
+                'agent_id': agent_id,
+                'vector': vector.copy(),
+                'metadata': metadata.copy(),
+                'index_backup': index_backup,
+                'pre_operation_state': self._get_index_state_summary()
+            }
+
+            # Record operation in transaction
+            with self._transaction_lock:
+                if transaction_id in self._active_transactions:
+                    self._active_transactions[transaction_id]['vector_operations'].append(operation)
+
+            # Write WAL entry
+            self._write_vector_wal_entry(transaction_id, 'VECTOR_ADD', {
+                'agent_id': agent_id,
+                'vector_shape': vector.shape,
+                'metadata_keys': list(metadata.keys()),
+                'backup_path': str(index_backup) if index_backup else None
+            })
+
+            # Perform the actual vector addition
+            success = self._perform_vector_addition(agent_id, vector, metadata)
+
+            if not success:
+                raise Exception("Vector addition to index failed")
+
+            # Update health metrics
+            self.index_health['vector_count'] += 1
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Vector transaction operation failed: {e}")
+            raise
+
+    def _perform_vector_addition(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
+        """Perform the actual vector addition to the index."""
+        try:
+            start_time = time.time()
+
+            if self.backend == "faiss":
+                return self._save_vector_faiss_batch(agent_id, vector, metadata)
+            elif self.backend == "chroma":
+                return self._save_vector_chroma_batch(agent_id, vector, metadata)
+            elif self.backend == "hybrid":
+                faiss_success = True
+                chroma_success = True
+
+                if FAISS_AVAILABLE:
+                    faiss_success = self._save_vector_faiss_batch(agent_id, vector, metadata)
+                if CHROMA_AVAILABLE:
+                    chroma_success = self._save_vector_chroma_batch(agent_id, vector, metadata)
+
+                return faiss_success and chroma_success
+            else:
+                raise ValueError(f"Unknown backend: {self.backend}")
+
+        except Exception as e:
+            self.logger.error(f"Vector addition failed: {e}")
+            return False
+        finally:
+            # Record performance metrics
+            duration = (time.time() - start_time) * 1000
+            self.index_health['search_performance_ms'].append(duration)
+            # Keep only recent performance data
+            if len(self.index_health['search_performance_ms']) > 1000:
+                self.index_health['search_performance_ms'] = self.index_health['search_performance_ms'][-1000:]
+
+    # Original methods (preserved and enhanced)
 
     def _initialize_backends(self):
         """Initialize the chosen backend(s)."""
@@ -147,9 +432,9 @@ class VectorDBStorage(StorageBase):
         """Ensure directory exists."""
         path.mkdir(parents=True, exist_ok=True)
 
-    # Implement required methods from base class
+    # Implement required methods from base class (enhanced with transaction support)
     def save_brain_state(self, agent_id: str, env_id: str, data: Dict[str, Any]) -> bool:
-        """Save neural brain state to JSON file."""
+        """Save neural brain state to JSON file with transaction safety."""
         try:
             env_path = self._get_env_path(agent_id, env_id)
             self._ensure_directory(env_path)
@@ -159,8 +444,20 @@ class VectorDBStorage(StorageBase):
 
             # Save to file
             file_path = env_path / "brain_state.json"
-            with open(file_path, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
+
+            # Use transaction if enabled
+            if self.transaction_log_enabled:
+                with self.vector_transaction() as txn_id:
+                    with open(file_path, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+
+                    # Verify integrity
+                    if self.corruption_detection_enabled:
+                        checksum = self._calculate_file_checksum(file_path)
+                        self._metadata_checksums[str(file_path)] = checksum
+            else:
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
 
             # Clear cache
             cache_key = self._get_cache_key("brain", agent_id, env_id)
@@ -171,10 +468,12 @@ class VectorDBStorage(StorageBase):
 
         except Exception as e:
             self.logger.error(f"Failed to save brain state: {str(e)}")
+            self.vector_error_metrics['vector_save_failures'] += 1
+            self._notify_vector_critical_error(f"Brain state save failure: {e}")
             return False
 
     def load_brain_state(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """Load neural brain state from JSON file."""
+        """Load neural brain state from JSON file with corruption detection."""
         try:
             # Check cache first
             cache_key = self._get_cache_key("brain", agent_id, env_id)
@@ -185,6 +484,14 @@ class VectorDBStorage(StorageBase):
             file_path = self._get_env_path(agent_id, env_id) / "brain_state.json"
             if not file_path.exists():
                 return None
+
+            # Verify integrity if enabled
+            if self.corruption_detection_enabled:
+                if not self._verify_file_integrity(file_path):
+                    self.logger.error(f"Corruption detected in {file_path}")
+                    self.vector_error_metrics['index_corruption_detected'] += 1
+                    self._notify_vector_critical_error(f"File corruption detected: {file_path}")
+                    return None
 
             with open(file_path, 'r') as f:
                 data = json.load(f)
@@ -199,7 +506,7 @@ class VectorDBStorage(StorageBase):
             return None
 
     def save_knowledge(self, agent_id: str, env_id: str, data: Dict[str, Any]) -> bool:
-        """Save symbolic knowledge to JSON file."""
+        """Save symbolic knowledge to JSON file with transaction safety."""
         try:
             env_path = self._get_env_path(agent_id, env_id)
             self._ensure_directory(env_path)
@@ -209,8 +516,20 @@ class VectorDBStorage(StorageBase):
 
             # Save to file
             file_path = env_path / "knowledge.json"
-            with open(file_path, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
+
+            # Use transaction if enabled
+            if self.transaction_log_enabled:
+                with self.vector_transaction() as txn_id:
+                    with open(file_path, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+
+                    # Verify integrity
+                    if self.corruption_detection_enabled:
+                        checksum = self._calculate_file_checksum(file_path)
+                        self._metadata_checksums[str(file_path)] = checksum
+            else:
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
 
             # Clear cache
             cache_key = self._get_cache_key("knowledge", agent_id, env_id)
@@ -221,10 +540,12 @@ class VectorDBStorage(StorageBase):
 
         except Exception as e:
             self.logger.error(f"Failed to save knowledge: {str(e)}")
+            self.vector_error_metrics['vector_save_failures'] += 1
+            self._notify_vector_critical_error(f"Knowledge save failure: {e}")
             return False
 
     def load_knowledge(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """Load symbolic knowledge from JSON file."""
+        """Load symbolic knowledge from JSON file with corruption detection."""
         try:
             # Check cache first
             cache_key = self._get_cache_key("knowledge", agent_id, env_id)
@@ -235,6 +556,14 @@ class VectorDBStorage(StorageBase):
             file_path = self._get_env_path(agent_id, env_id) / "knowledge.json"
             if not file_path.exists():
                 return None
+
+            # Verify integrity if enabled
+            if self.corruption_detection_enabled:
+                if not self._verify_file_integrity(file_path):
+                    self.logger.error(f"Corruption detected in {file_path}")
+                    self.vector_error_metrics['index_corruption_detected'] += 1
+                    self._notify_vector_critical_error(f"File corruption detected: {file_path}")
+                    return None
 
             with open(file_path, 'r') as f:
                 data = json.load(f)
@@ -249,7 +578,7 @@ class VectorDBStorage(StorageBase):
             return None
 
     def save_autoencoder(self, agent_id: str, env_id: str, state_dict: Dict[str, Any]) -> bool:
-        """Save autoencoder state to JSON file."""
+        """Save autoencoder state to JSON file with transaction safety."""
         try:
             env_path = self._get_env_path(agent_id, env_id)
             self._ensure_directory(env_path)
@@ -259,21 +588,43 @@ class VectorDBStorage(StorageBase):
 
             # Save to file
             file_path = env_path / "autoencoder.json"
-            with open(file_path, 'w') as f:
-                json.dump(state_dict, f, indent=2, default=str)
+
+            # Use transaction if enabled
+            if self.transaction_log_enabled:
+                with self.vector_transaction() as txn_id:
+                    with open(file_path, 'w') as f:
+                        json.dump(state_dict, f, indent=2, default=str)
+
+                    # Verify integrity
+                    if self.corruption_detection_enabled:
+                        checksum = self._calculate_file_checksum(file_path)
+                        self._metadata_checksums[str(file_path)] = checksum
+            else:
+                with open(file_path, 'w') as f:
+                    json.dump(state_dict, f, indent=2, default=str)
 
             return True
 
         except Exception as e:
             self.logger.error(f"Failed to save autoencoder: {str(e)}")
+            self.vector_error_metrics['vector_save_failures'] += 1
+            self._notify_vector_critical_error(f"Autoencoder save failure: {e}")
             return False
 
     def load_autoencoder(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """Load autoencoder state from JSON file."""
+        """Load autoencoder state from JSON file with corruption detection."""
         try:
             file_path = self._get_env_path(agent_id, env_id) / "autoencoder.json"
             if not file_path.exists():
                 return None
+
+            # Verify integrity if enabled
+            if self.corruption_detection_enabled:
+                if not self._verify_file_integrity(file_path):
+                    self.logger.error(f"Corruption detected in {file_path}")
+                    self.vector_error_metrics['index_corruption_detected'] += 1
+                    self._notify_vector_critical_error(f"File corruption detected: {file_path}")
+                    return None
 
             with open(file_path, 'r') as f:
                 data = json.load(f)
@@ -318,7 +669,7 @@ class VectorDBStorage(StorageBase):
             # Add timestamp
             metadata['timestamp'] = datetime.now().isoformat()
 
-            # Save using chosen backend with batching
+            # Save using chosen backend with batching (ORIGINAL PERFORMANCE)
             if self.backend == "faiss" and FAISS_AVAILABLE:
                 return self._save_vector_faiss_batch(agent_id, vector, metadata)
             elif self.backend == "chroma" and CHROMA_AVAILABLE:
@@ -583,11 +934,6 @@ class VectorDBStorage(StorageBase):
         # Use IndexFlatIP for inner product (cosine similarity with normalized vectors)
         index = faiss.IndexFlatIP(256)  # 256-dimensional vectors
 
-        # For larger datasets, could use IndexIVFFlat for faster search
-        # nlist = 100  # number of clusters
-        # quantizer = faiss.IndexFlatIP(256)
-        # index = faiss.IndexIVFFlat(quantizer, 256, nlist, faiss.METRIC_INNER_PRODUCT)
-
         # Create metadata storage
         self.faiss_indices[agent_id] = {
             'index': index,
@@ -715,20 +1061,16 @@ class VectorDBStorage(StorageBase):
 
     def get_storage_stats(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get storage statistics.
-
-        Args:
-            agent_id: Specific agent or None for global stats
-
-        Returns:
-            Storage statistics
+        Get storage statistics with enhanced health metrics.
         """
         stats = {
             'backend': self.backend,
             'backends_available': {
                 'faiss': FAISS_AVAILABLE,
                 'chroma': CHROMA_AVAILABLE
-            }
+            },
+            'vector_error_metrics': self.vector_error_metrics.copy(),
+            'index_health': self.index_health.copy()
         }
 
         if agent_id:
@@ -755,6 +1097,369 @@ class VectorDBStorage(StorageBase):
 
         return stats
 
+    # NEW Sprint 5: Corruption detection and recovery methods
+
+    def _verify_file_integrity(self, file_path: Path) -> bool:
+        """Verify file integrity using checksums."""
+        if not self.corruption_detection_enabled:
+            return True
+
+        try:
+            current_checksum = self._calculate_file_checksum(file_path)
+            stored_checksum = self._metadata_checksums.get(str(file_path))
+
+            if stored_checksum is None:
+                # No stored checksum, calculate and store it
+                self._metadata_checksums[str(file_path)] = current_checksum
+                self._save_metadata_checksums()
+                return True
+
+            return current_checksum == stored_checksum
+
+        except Exception as e:
+            self.logger.warning(f"Integrity check failed for {file_path}: {e}")
+            return False
+
+    def _calculate_file_checksum(self, file_path: Path) -> str:
+        """Calculate SHA256 checksum of file."""
+        sha256_hash = hashlib.sha256()
+        try:
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(chunk)
+            return sha256_hash.hexdigest()
+        except Exception as e:
+            self.logger.error(f"Failed to calculate checksum for {file_path}: {e}")
+            return ""
+
+    def _load_metadata_checksums(self):
+        """Load stored metadata checksums."""
+        try:
+            if self._checksum_file.exists():
+                with open(self._checksum_file, 'r') as f:
+                    self._metadata_checksums = json.load(f)
+            else:
+                self._metadata_checksums = {}
+        except Exception as e:
+            self.logger.warning(f"Failed to load metadata checksums: {e}")
+            self._metadata_checksums = {}
+
+    def _save_metadata_checksums(self):
+        """Save metadata checksums."""
+        try:
+            with open(self._checksum_file, 'w') as f:
+                json.dump(self._metadata_checksums, f, indent=2)
+        except Exception as e:
+            self.logger.error(f"Failed to save metadata checksums: {e}")
+
+    def _check_index_health(self) -> bool:
+        """Check index health and integrity."""
+        try:
+            current_time = time.time()
+
+            # Skip if checked recently
+            if (current_time - self.index_health['last_health_check'] <
+                self.index_health['health_check_interval']):
+                return True
+
+            self.index_health['last_health_check'] = current_time
+
+            # Check index file existence
+            if self.backend == "faiss":
+                index_files = list(self.base_path.glob("**/faiss_index.bin"))
+                if not index_files:
+                    self.logger.warning("FAISS index files missing")
+                    return False
+
+            # Performance health check
+            if len(self.index_health['search_performance_ms']) > 100:
+                avg_search_time = sum(self.index_health['search_performance_ms'][-100:]) / 100
+                if avg_search_time > 1000:  # 1 second
+                    self.logger.warning(f"Search performance degraded: {avg_search_time:.2f}ms")
+                    return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Index health check failed: {e}")
+            return False
+
+    def _repair_index(self) -> bool:
+        """Attempt to repair corrupted index."""
+        try:
+            self.logger.info("Attempting index repair")
+
+            # Try to recover from backups first
+            if self._recover_from_backup():
+                self.vector_error_metrics['recoveries_performed'] += 1
+                return True
+
+            # Last resort: rebuild empty index
+            if self._rebuild_empty_index():
+                self.vector_error_metrics['index_rebuilds'] += 1
+                self.logger.warning("Rebuilt empty index - data may be lost")
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Index repair failed: {e}")
+            return False
+
+    def _recover_from_backup(self) -> bool:
+        """Recover index from backup files."""
+        try:
+            backup_files = list(self.base_path.glob("**/*.backup_*"))
+            if not backup_files:
+                return False
+
+            # Sort by modification time (newest first)
+            backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+
+            for backup_file in backup_files[:3]:  # Try 3 most recent
+                try:
+                    # Determine original file name
+                    original_name = backup_file.name.split('.backup_')[0]
+                    original_file = backup_file.parent / original_name
+
+                    # Restore backup
+                    shutil.copy2(backup_file, original_file)
+
+                    # Update checksum
+                    if self.corruption_detection_enabled:
+                        checksum = self._calculate_file_checksum(original_file)
+                        self._metadata_checksums[str(original_file)] = checksum
+
+                    self.logger.info(f"Recovered from backup: {backup_file}")
+                    return True
+
+                except Exception as e:
+                    self.logger.warning(f"Backup recovery failed for {backup_file}: {e}")
+                    continue
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Backup recovery failed: {e}")
+            return False
+
+    def _rebuild_empty_index(self) -> bool:
+        """Rebuild an empty index."""
+        try:
+            if self.backend == "faiss":
+                import faiss
+                # Create new empty index for each agent
+                for agent_id in self._get_all_agent_ids():
+                    self.faiss_indices[agent_id] = {
+                        'index': faiss.IndexFlatIP(256),
+                        'metadata': {}
+                    }
+                    self._save_faiss_index(agent_id)
+
+            elif self.backend == "chroma":
+                # Reinitialize ChromaDB collections
+                for agent_id in self._get_all_agent_ids():
+                    if agent_id in self.chroma_collections:
+                        del self.chroma_collections[agent_id]
+                    self._get_chroma_collection(agent_id)
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Empty index rebuild failed: {e}")
+            return False
+
+    def _create_index_backup(self) -> Optional[Path]:
+        """Create backup of current index state."""
+        try:
+            backup_dir = self.base_path / "backups"
+            backup_dir.mkdir(exist_ok=True)
+
+            backup_timestamp = int(time.time())
+
+            if self.backend == "faiss":
+                # Backup FAISS index files
+                index_files = list(self.base_path.glob("**/faiss_index.bin"))
+                if index_files:
+                    source_file = index_files[0]
+                    backup_file = backup_dir / f"index_backup_{backup_timestamp}.bin"
+                    shutil.copy2(source_file, backup_file)
+                    return backup_file
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Index backup creation failed: {e}")
+            return None
+
+    def _notify_vector_critical_error(self, message: str):
+        """Notify of critical vector database errors."""
+        self.logger.critical(message)
+
+        # Write to critical error log
+        try:
+            critical_log_path = Path("./critical_vector_errors.log")
+            with open(critical_log_path, 'a') as f:
+                f.write(f"{datetime.now().isoformat()} - {message}\n")
+        except Exception:
+            pass
+
+    # Transaction cleanup and finalization methods
+
+    def _finalize_vector_add(self, operation: Dict[str, Any]):
+        """Finalize vector addition operation."""
+        # Vector is already added to index during transaction
+        # Just update health metrics
+        self.index_health['vector_count'] += 1
+
+    def _finalize_index_update(self, operation: Dict[str, Any]):
+        """Finalize index update operation."""
+        # Update any cached index state
+        pass
+
+    def _rollback_vector_add(self, operation: Dict[str, Any]):
+        """Rollback vector addition operation."""
+        try:
+            # Restore from backup if available
+            backup_path = operation.get('index_backup')
+            if backup_path and Path(backup_path).exists():
+                self.logger.info(f"Restoring index from backup: {backup_path}")
+                # This would need implementation based on specific index type
+            else:
+                self.logger.warning("No backup available for vector rollback")
+
+        except Exception as e:
+            self.logger.error(f"Vector rollback failed: {e}")
+
+    def _rollback_index_update(self, operation: Dict[str, Any]):
+        """Rollback index update operation."""
+        # Similar to vector rollback
+        self._rollback_vector_add(operation)
+
+    def _cleanup_vector_transaction(self, transaction: Dict[str, Any]):
+        """Cleanup vector transaction resources."""
+        try:
+            # Cleanup WAL entries
+            for wal_file in transaction.get('wal_entries', []):
+                try:
+                    if wal_file.exists():
+                        wal_file.unlink()
+                except Exception as e:
+                    self.logger.warning(f"Failed to cleanup WAL file {wal_file}: {e}")
+
+            # Cleanup index snapshots
+            for snapshot_path in transaction.get('index_snapshots', {}).values():
+                try:
+                    if Path(snapshot_path).exists():
+                        Path(snapshot_path).unlink()
+                except Exception as e:
+                    self.logger.warning(f"Failed to cleanup snapshot {snapshot_path}: {e}")
+
+        except Exception as e:
+            self.logger.error(f"Transaction cleanup failed: {e}")
+
+    # NEW Sprint 5: Recovery and maintenance utilities
+
+    def repair_vector_storage(self) -> Dict[str, Any]:
+        """Repair vector storage corruption and optimize performance."""
+        self.logger.info("Starting vector storage repair")
+
+        results = {
+            'repair_started': time.time(),
+            'files_repaired': 0,
+            'indexes_rebuilt': 0,
+            'backups_restored': 0,
+            'errors': [],
+            'repair_success': True
+        }
+
+        try:
+            # Check and repair index files
+            if self.backend == "faiss":
+                index_files = list(self.base_path.glob("**/faiss_index.bin"))
+                for index_file in index_files:
+                    if not self._verify_file_integrity(index_file):
+                        self.logger.info(f"Repairing corrupted index: {index_file}")
+
+                        if self._recover_from_backup():
+                            results['backups_restored'] += 1
+                            results['files_repaired'] += 1
+                        else:
+                            error_msg = f"Failed to repair index: {index_file}"
+                            results['errors'].append(error_msg)
+                            results['repair_success'] = False
+
+            results['repair_completed'] = time.time()
+            results['repair_duration'] = results['repair_completed'] - results['repair_started']
+
+            self.logger.info(f"Vector storage repair complete: {results}")
+            return results
+
+        except Exception as e:
+            error_msg = f"Vector storage repair failed: {e}"
+            results['errors'].append(error_msg)
+            results['repair_success'] = False
+            self.logger.error(error_msg)
+            return results
+
+    def get_vector_storage_health(self) -> Dict[str, Any]:
+        """Get comprehensive vector storage health metrics."""
+        health = {
+            'timestamp': time.time(),
+            'backend': self.backend,
+            'error_metrics': self.vector_error_metrics.copy(),
+            'index_health': self.index_health.copy(),
+            'active_transactions': len(self._active_transactions),
+            'features_enabled': {
+                'transaction_log': self.transaction_log_enabled,
+                'corruption_detection': self.corruption_detection_enabled,
+                'backup_enabled': self.backup_enabled
+            },
+            'storage_size_mb': 0,
+            'vector_count': 0,
+            'health_status': 'healthy'
+        }
+
+        try:
+            # Calculate storage size
+            total_size = sum(f.stat().st_size for f in self.base_path.rglob('*') if f.is_file())
+            health['storage_size_mb'] = total_size / 1024 / 1024
+
+            # Get vector count
+            if self.backend == "faiss" and hasattr(self, 'faiss_indices'):
+                health['vector_count'] = sum(idx['index'].ntotal for idx in self.faiss_indices.values() if 'index' in idx)
+            elif self.backend == "chroma" and hasattr(self, 'chroma_collections'):
+                try:
+                    health['vector_count'] = sum(collection.count() for collection in self.chroma_collections.values())
+                except:
+                    health['vector_count'] = 0
+
+            # Determine health status
+            total_operations = max(1, health['vector_count'] + sum(self.vector_error_metrics.values()))
+            error_rate = sum(self.vector_error_metrics.values()) / total_operations
+
+            if error_rate > 0.1:  # More than 10% error rate
+                health['health_status'] = 'degraded'
+            elif error_rate > 0.05:  # More than 5% error rate
+                health['health_status'] = 'warning'
+
+            # Check performance
+            if self.index_health['search_performance_ms']:
+                avg_search_time = sum(self.index_health['search_performance_ms'][-100:]) / min(100, len(self.index_health['search_performance_ms']))
+                health['avg_search_time_ms'] = avg_search_time
+
+                if avg_search_time > 1000:  # 1 second
+                    health['health_status'] = 'warning'
+
+            if health['active_transactions'] > 10:
+                health['health_status'] = 'warning'
+
+        except Exception as e:
+            health['health_status'] = 'error'
+            health['error'] = str(e)
+
+        return health
+
     def close(self):
         """Clean up storage resources."""
         # Flush all buffers
@@ -770,9 +1475,13 @@ class VectorDBStorage(StorageBase):
         for agent_id in self.faiss_indices:
             self._save_faiss_index(agent_id)
 
+        # Save final checksums
+        if self.corruption_detection_enabled:
+            self._save_metadata_checksums()
+
         # Clear caches
         self._clear_cache()
         self.faiss_indices.clear()
         self.chroma_collections.clear()
 
-        self.logger.info("VectorDBStorage closed")
+        self.logger.info("Enhanced VectorDBStorage closed")

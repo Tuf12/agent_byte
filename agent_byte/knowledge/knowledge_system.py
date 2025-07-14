@@ -166,6 +166,8 @@ class KnowledgeSystem:
 
         return action, reasoning, confidence
 
+
+
     def update_skill_outcome(self, env_id: str, skill_id: str, success: bool, reward: float):
         """
         Update the outcome of a skill application.
@@ -239,7 +241,7 @@ class KnowledgeSystem:
     def apply_transfer(self, target_env: str, transfer_package: Dict[str, Any],
                        target_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Apply transferred knowledge to a new environment.
+        Apply transferred knowledge to a new environment with validation pipeline.
 
         Args:
             target_env: Target environment ID
@@ -258,6 +260,14 @@ class KnowledgeSystem:
             transfer_package, target_analysis
         )
 
+        # NEW: Add validation tracking BEFORE applying skills
+        validation_context = {
+            'pre_transfer_performance': self._get_baseline_performance(target_env),
+            'transferred_skills': mapped_knowledge['transferable_skills'],
+            'transfer_timestamp': time.time(),
+            'source_environment': transfer_package.get('source_environment', 'unknown')
+        }
+
         # Apply mapped knowledge to target environment
         target_knowledge = self.knowledge_base['environments'][target_env]
 
@@ -270,6 +280,9 @@ class KnowledgeSystem:
         # Update environment analysis
         if 'environment_analysis' in target_analysis:
             target_knowledge['environment_analysis'] = target_analysis
+
+        # Store validation context for later validation
+        target_knowledge['pending_validation'] = validation_context
 
         # Record transfer
         transfer_record = {
@@ -436,3 +449,99 @@ class KnowledgeSystem:
 
         stability = 1.0 - (state_changes / (len(behavioral_states) - 1))
         return stability
+
+    def validate_active_transfers(self, env_id: str, current_performance: Dict[str, Any]):
+        """Validate any pending transfers for this environment."""
+        if env_id not in self.knowledge_base['environments']:
+            return None
+
+        env_knowledge = self.knowledge_base['environments'][env_id]
+
+        if 'pending_validation' not in env_knowledge:
+            return None
+
+        validation_context = env_knowledge['pending_validation']
+
+        # Use existing skill performance data
+        transferred_skills = validation_context['transferred_skills']
+        validated_skills = {}
+
+        for skill_id in transferred_skills:
+            if skill_id in env_knowledge['discovered_skills']:
+                skill_data = env_knowledge['discovered_skills'][skill_id]
+                validated_skills[skill_id] = skill_data
+
+        if not validated_skills:
+            return None
+
+        # Perform validation using transfer_mapper (which you already have!)
+        source_env = validation_context.get('source_environment', 'unknown')
+        validation_result = self.transfer_mapper.validate_transfer(
+            source_env, env_id, validated_skills, current_performance
+        )
+
+        # Remove from pending if validation complete
+        if validation_result and validation_result.get('overall_success', False):
+            del env_knowledge['pending_validation']
+            self.logger.info(f"Transfer validation successful for {env_id}")
+        elif validation_result:
+            # Keep pending but log the result
+            self.logger.info(
+                f"Transfer validation ongoing for {env_id}: {validation_result.get('performance_delta', 0)}")
+
+        return validation_result
+
+    def get_transfer_validation_report(self, env_id: str) -> Dict[str, Any]:
+        """Get detailed report on transfer validation results."""
+        env_pair_metrics = {}
+
+        # Collect metrics for all transfers involving this environment as target
+        for env_pair, metrics in self.transfer_mapper.transfer_success_metrics.items():
+            if env_pair.endswith(f"->{env_id}"):
+                env_pair_metrics[env_pair] = metrics
+
+        report = {
+            'target_environment': env_id,
+            'transfer_metrics': env_pair_metrics,
+            'total_transfers_to_env': len(env_pair_metrics),
+            'validation_history': self.transfer_mapper.validation_metrics.get(env_id, {})
+        }
+
+        # Calculate average improvement if we have data
+        improvements = []
+        for metrics in env_pair_metrics.values():
+            if 'average_improvement' in metrics:
+                improvements.append(metrics['average_improvement'])
+
+        if improvements:
+            report['average_improvement'] = np.mean(improvements)
+            report['best_transfer_source'] = max(env_pair_metrics.keys(),
+                                                 key=lambda k: env_pair_metrics[k].get('average_improvement', 0))
+        else:
+            report['average_improvement'] = 0
+            report['best_transfer_source'] = None
+
+        return report
+
+    def _get_baseline_performance(self, env_id: str) -> Dict[str, Any]:
+        """Get baseline performance metrics for comparison."""
+        if env_id not in self.knowledge_base['environments']:
+            return {'average_reward': 0, 'step_count': 0, 'timestamp': time.time()}
+
+        env_knowledge = self.knowledge_base['environments'][env_id]
+        decision_history = env_knowledge.get('decision_history', [])
+
+        if not decision_history:
+            return {'average_reward': 0, 'step_count': 0, 'timestamp': time.time()}
+
+        # Calculate baseline from recent decisions
+        recent_decisions = decision_history[-50:]  # Last 50 decisions
+        avg_confidence = np.mean([d['confidence'] for d in recent_decisions])
+
+        return {
+            'average_reward': avg_confidence,  # Use confidence as proxy for performance
+            'step_count': len(decision_history),
+            'recent_confidence': avg_confidence,
+            'total_decisions': len(decision_history),
+            'timestamp': time.time()
+        }
