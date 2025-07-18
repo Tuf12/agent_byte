@@ -11,9 +11,6 @@ from typing import Union, Dict, Any, List, Tuple, Optional
 from abc import ABC, abstractmethod
 import logging
 
-from numpy import ndarray, dtype, floating
-from numpy._typing import _64Bit
-
 from .interfaces import ActionSpace, ActionSpaceType
 
 
@@ -91,7 +88,7 @@ class ActionAdapter(ABC):
         return 0.0  # Default: no loss
 
 
-class DiscreteToContinuousAdapter(ActionAdapter):
+class DiscreteToContiunousAdapter(ActionAdapter):
     """
     Adapter to convert discrete actions to continuous actions.
 
@@ -357,7 +354,7 @@ class ContinuousToDiscreteAdapter(ActionAdapter):
         logits = action[:self.target_space.size]
         return int(np.argmax(logits))
 
-    def reverse_adapt_action(self, action: int) -> ndarray | None:
+    def reverse_adapt_action(self, action: int) -> np.ndarray:
         """Convert discrete action back to continuous representation."""
         if self.strategy == "quantization":
             return self._dequantize_action(action)
@@ -498,7 +495,7 @@ class HybridActionAdapter(ActionAdapter):
 
             if source_size > discrete_portion:
                 continuous_source = create_discrete_action_space(source_size - discrete_portion)
-                self.sub_adapters['continuous'] = DiscreteToContinuousAdapter(
+                self.sub_adapters['continuous'] = DiscreteToContiunousAdapter(
                     continuous_source, continuous_target
                 )
 
@@ -576,8 +573,7 @@ class HybridActionAdapter(ActionAdapter):
 
         return hybrid_action
 
-    def reverse_adapt_action(self, action: Dict[str, Union[int, np.ndarray]]) -> None | int | ndarray | ndarray[
-        Any, dtype[floating[_64Bit]]]:
+    def reverse_adapt_action(self, action: Dict[str, Union[int, np.ndarray]]) -> Union[int, np.ndarray]:
         """Convert hybrid action back to source format."""
         discrete_part = action['discrete']
         continuous_part = action['continuous']
@@ -825,7 +821,7 @@ class ParameterizedActionAdapter(ActionAdapter):
 
         elif self.target_space.is_continuous() and self.source_space.is_discrete():
             # Use discrete to continuous adapter
-            fallback_adapter = DiscreteToContinuousAdapter(self.source_space, self.target_space)
+            fallback_adapter = DiscreteToContiunousAdapter(self.source_space, self.target_space)
             return fallback_adapter.adapt_action(action)
 
         elif self.target_space.is_discrete() and self.source_space.is_continuous():
@@ -889,7 +885,7 @@ def create_action_adapter(source_space: ActionSpace,
 
     if adapter_type == "discrete_to_continuous":
         strategy = kwargs.get("strategy", "uniform_grid")
-        return DiscreteToContinuousAdapter(source_space, target_space, strategy)
+        return DiscreteToContiunousAdapter(source_space, target_space, strategy)
 
     elif adapter_type == "continuous_to_discrete":
         strategy = kwargs.get("strategy", "quantization")

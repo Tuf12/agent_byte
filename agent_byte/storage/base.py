@@ -3,6 +3,7 @@ Abstract base class for storage implementations.
 
 This module provides the base class that all storage backends must inherit from.
 It includes helper methods and common functionality.
+Enhanced with Sprint 9 continuous action space support.
 """
 
 from abc import ABC, abstractmethod
@@ -20,6 +21,7 @@ class StorageBase(Storage):
 
     This class provides the interface and common functionality that all
     storage backends must implement to work with Agent Byte.
+    Enhanced with Sprint 9 continuous action space support.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -71,13 +73,13 @@ class StorageBase(Storage):
         pass
 
     @abstractmethod
-    def get_agent_profile(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Get agent profile."""
+    def save_agent_profile(self, agent_id: str, profile: Dict[str, Any]) -> bool:
+        """Save agent profile."""
         pass
 
     @abstractmethod
-    def save_agent_profile(self, agent_id: str, profile: Dict[str, Any]) -> bool:
-        """Save agent profile."""
+    def load_agent_profile(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Load agent profile - this is the primary method."""
         pass
 
     # New abstract methods for autoencoder support
@@ -124,6 +126,109 @@ class StorageBase(Storage):
         """
         pass
 
+    # NEW: Sprint 9 Continuous Action Space Support
+    @abstractmethod
+    def save_continuous_network_state(self, agent_id: str, env_id: str,
+                                     network_state: Dict[str, Any]) -> bool:
+        """
+        Save continuous network state (SAC/DDPG weights and training state).
+
+        Args:
+            agent_id: Unique identifier for the agent
+            env_id: Environment identifier
+            network_state: Dictionary containing:
+                - algorithm: "sac" or "ddpg"
+                - state_size: Input state dimension
+                - action_size: Output action dimension
+                - action_bounds: Action space bounds
+                - device: Training device ('cpu' or 'cuda')
+                - weights_data: Serialized network weights
+                - network_info: Algorithm-specific parameters
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def load_continuous_network_state(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load continuous network state.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            env_id: Environment identifier
+
+        Returns:
+            Network state dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def save_action_adapter_config(self, agent_id: str, env_id: str,
+                                  adapter_config: Dict[str, Any]) -> bool:
+        """
+        Save action adapter configuration.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            env_id: Environment identifier
+            adapter_config: Dictionary containing:
+                - source_space: Source action space specification
+                - target_space: Target action space specification
+                - adapter_type: Type of adapter used
+                - parameters: Adapter-specific parameters
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def load_action_adapter_config(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load action adapter configuration.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            env_id: Environment identifier
+
+        Returns:
+            Adapter configuration dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def list_continuous_networks(self, agent_id: str) -> List[str]:
+        """
+        List all environments with saved continuous networks for an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            List of environment IDs with continuous networks
+        """
+        pass
+
+    @abstractmethod
+    def list_action_adapters(self, agent_id: str) -> List[str]:
+        """
+        List all environments with saved action adapters for an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            List of environment IDs with action adapters
+        """
+        pass
+
+    # Compatibility alias - get_agent_profile calls load_agent_profile
+    def get_agent_profile(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Alias for load_agent_profile for backward compatibility."""
+        return self.load_agent_profile(agent_id)
+
     # Helper methods available to all implementations
 
     def _get_cache_key(self, *args) -> str:
@@ -163,88 +268,89 @@ class StorageBase(Storage):
 
         Args:
             vector: Vector to validate
-            expected_dim: Expected number of dimensions
+            expected_dim: Expected vector dimension
 
         Returns:
             True if valid, False otherwise
         """
         if not isinstance(vector, np.ndarray):
-            self.logger.error(f"Vector must be numpy array, got {type(vector)}")
             return False
 
         if vector.ndim != 1:
-            self.logger.error(f"Vector must be 1-dimensional, got {vector.ndim} dimensions")
             return False
 
         if vector.shape[0] != expected_dim:
-            self.logger.error(f"Vector must have {expected_dim} dimensions, got {vector.shape[0]}")
+            return False
+
+        if not np.isfinite(vector).all():
             return False
 
         return True
 
-    def migrate_to(self, target_storage: 'StorageBase', agent_ids: Optional[List[str]] = None) -> bool:
+    def _validate_continuous_network_state(self, network_state: Dict[str, Any]) -> bool:
         """
-        Migrate data to another storage backend.
+        Validate continuous network state structure.
 
         Args:
-            target_storage: Target storage backend
-            agent_ids: Specific agent IDs to migrate (None for all)
+            network_state: Network state to validate
 
         Returns:
-            True if successful, False otherwise
+            True if valid, False otherwise
         """
-        try:
-            # Get all agent IDs if not specified
-            if agent_ids is None:
-                # This would need to be implemented by subclasses
-                self.logger.warning("Migrating all agents - this may take time")
-                agent_ids = self._get_all_agent_ids()
-
-            for agent_id in agent_ids:
-                self.logger.info(f"Migrating agent: {agent_id}")
-
-                # Migrate profile
-                profile = self.get_agent_profile(agent_id)
-                if profile:
-                    target_storage.save_agent_profile(agent_id, profile)
-
-                # Migrate environments
-                environments = self.list_environments(agent_id)
-                for env_id in environments:
-                    # Migrate brain state
-                    brain_state = self.load_brain_state(agent_id, env_id)
-                    if brain_state:
-                        target_storage.save_brain_state(agent_id, env_id, brain_state)
-
-                    # Migrate knowledge
-                    knowledge = self.load_knowledge(agent_id, env_id)
-                    if knowledge:
-                        target_storage.save_knowledge(agent_id, env_id, knowledge)
-
-                    # Migrate autoencoder
-                    autoencoder = self.load_autoencoder(agent_id, env_id)
-                    if autoencoder:
-                        target_storage.save_autoencoder(agent_id, env_id, autoencoder)
-
-                # Note: Experience vectors would need special handling
-                self.logger.info(f"Successfully migrated agent: {agent_id}")
-
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Migration failed: {str(e)}")
+        # Basic validation - must have algorithm
+        if 'algorithm' not in network_state:
+            self.logger.warning("Missing required field: algorithm")
             return False
 
-    @abstractmethod
-    def _get_all_agent_ids(self) -> List[str]:
-        """Get all agent IDs in storage (must be implemented by subclasses)."""
-        pass
+        # Validate algorithm if provided
+        valid_algorithms = ['sac', 'ddpg', 'td3', 'ppo_continuous']
+        if network_state['algorithm'] not in valid_algorithms:
+            self.logger.warning(f"Invalid algorithm: {network_state['algorithm']}")
+            return False
+
+        # Optional validation for other fields
+        if 'state_size' in network_state:
+            if not isinstance(network_state['state_size'], int) or network_state['state_size'] <= 0:
+                self.logger.warning(f"Invalid state_size: {network_state['state_size']}")
+                return False
+
+        if 'action_size' in network_state:
+            if not isinstance(network_state['action_size'], int) or network_state['action_size'] <= 0:
+                self.logger.warning(f"Invalid action_size: {network_state['action_size']}")
+                return False
+
+        return True
+
+    def _validate_action_adapter_config(self, adapter_config: Dict[str, Any]) -> bool:
+        """
+        Validate action adapter configuration structure.
+
+        Args:
+            adapter_config: Adapter config to validate
+
+        Returns:
+            True if valid, False otherwise
+        """
+        # Basic validation - must have adapter_type
+        if 'adapter_type' not in adapter_config:
+            self.logger.warning("Missing required field: adapter_type")
+            return False
+
+        # Validate adapter type
+        valid_types = [
+            'discrete_to_continuous',
+            'continuous_to_discrete',
+            'hybrid',
+            'parameterized'
+        ]
+        if adapter_config['adapter_type'] not in valid_types:
+            self.logger.warning(f"Invalid adapter_type: {adapter_config['adapter_type']}")
+            return False
+
+        return True
 
     def close(self) -> None:
-        """
-        Clean up storage resources.
-
-        Override this method if your storage backend needs cleanup.
-        """
-        self._clear_cache()
+        """Close storage backend and clean up resources."""
+        if self._cache is not None:
+            self._cache.clear()
         self.logger.info("Storage backend closed")

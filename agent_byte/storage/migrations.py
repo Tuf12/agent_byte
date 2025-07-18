@@ -3,6 +3,7 @@ Storage migration utilities for Agent Byte.
 
 This module provides tools for migrating agent data between different
 storage backends and versions.
+Enhanced with Sprint 9 continuous action space support.
 """
 
 import json
@@ -28,6 +29,7 @@ class StorageMigrator:
     - Batch migration of multiple agents
     - Rollback capabilities
     - Vector database migration with optimized batch processing
+    - Sprint 9: Continuous action space data migration
     """
 
     def __init__(self):
@@ -64,13 +66,15 @@ class StorageMigrator:
             'agents_migrated': 0,
             'agents_failed': 0,
             'experiences_migrated': 0,
+            'continuous_networks_migrated': 0,  # NEW Sprint 9
+            'action_adapters_migrated': 0,      # NEW Sprint 9
             'errors': []
         }
 
         try:
             # Get all agent IDs if not specified
             if agent_ids is None:
-                agent_ids = source_storage._get_all_agent_ids()
+                agent_ids = self._get_all_agent_ids(source_storage)
                 self.logger.info(f"Found {len(agent_ids)} agents to migrate")
 
             # Create backup if requested
@@ -82,7 +86,7 @@ class StorageMigrator:
             for agent_id in tqdm(agent_ids, desc="Migrating agents"):
                 try:
                     # Migrate basic data
-                    self._migrate_agent(agent_id, source_storage, target_storage)
+                    sprint9_counts = self._migrate_agent(agent_id, source_storage, target_storage)
 
                     # Migrate experience vectors with optimized batch processing
                     exp_count = self._migrate_experience_vectors(
@@ -91,6 +95,9 @@ class StorageMigrator:
 
                     results['agents_migrated'] += 1
                     results['experiences_migrated'] += exp_count
+                    results['continuous_networks_migrated'] += sprint9_counts.get('networks', 0)
+                    results['action_adapters_migrated'] += sprint9_counts.get('adapters', 0)
+
                     self.logger.debug(f"Successfully migrated agent: {agent_id}")
 
                 except Exception as e:
@@ -108,7 +115,9 @@ class StorageMigrator:
             self.logger.info(
                 f"Migration completed: {results['agents_migrated']} succeeded, "
                 f"{results['agents_failed']} failed, "
-                f"{results['experiences_migrated']} experiences migrated")
+                f"{results['experiences_migrated']} experiences migrated, "
+                f"{results['continuous_networks_migrated']} networks migrated, "
+                f"{results['action_adapters_migrated']} adapters migrated")
 
         except Exception as e:
             self.logger.error(f"Migration failed: {str(e)}")
@@ -192,7 +201,7 @@ class StorageMigrator:
 
         # Get agents to migrate
         if agent_ids is None:
-            agent_ids = storage._get_all_agent_ids()
+            agent_ids = self._get_all_agent_ids(storage)
 
         # Process each agent
         for agent_id in agent_ids:
@@ -236,8 +245,15 @@ class StorageMigrator:
 
         return results
 
-    def _migrate_agent(self, agent_id: str, source: StorageBase, target: StorageBase):
-        """Migrate a single agent's data."""
+    def _migrate_agent(self, agent_id: str, source: StorageBase, target: StorageBase) -> Dict[str, int]:
+        """
+        Migrate a single agent's data including Sprint 9 features.
+
+        Returns:
+            Dictionary with counts of Sprint 9 data migrated
+        """
+        sprint9_counts = {'networks': 0, 'adapters': 0}
+
         # Migrate profile
         profile = source.get_agent_profile(agent_id)
         if profile:
@@ -262,7 +278,34 @@ class StorageMigrator:
             if autoencoder:
                 target.save_autoencoder(agent_id, env_id, autoencoder)
 
-        self.logger.debug(f"Migrated agent {agent_id} with {len(environments)} environments")
+            # NEW Sprint 9: Migrate continuous network state
+            try:
+                network_state = source.load_continuous_network_state(agent_id, env_id)
+                if network_state:
+                    target.save_continuous_network_state(agent_id, env_id, network_state)
+                    sprint9_counts['networks'] += 1
+            except AttributeError:
+                # Source doesn't support continuous networks
+                pass
+            except Exception as e:
+                self.logger.warning(f"Failed to migrate continuous network for {agent_id}/{env_id}: {e}")
+
+            # NEW Sprint 9: Migrate action adapter config
+            try:
+                adapter_config = source.load_action_adapter_config(agent_id, env_id)
+                if adapter_config:
+                    target.save_action_adapter_config(agent_id, env_id, adapter_config)
+                    sprint9_counts['adapters'] += 1
+            except AttributeError:
+                # Source doesn't support action adapters
+                pass
+            except Exception as e:
+                self.logger.warning(f"Failed to migrate action adapter for {agent_id}/{env_id}: {e}")
+
+        self.logger.debug(f"Migrated agent {agent_id} with {len(environments)} environments, "
+                         f"{sprint9_counts['networks']} networks, {sprint9_counts['adapters']} adapters")
+
+        return sprint9_counts
 
     def _migrate_experience_vectors(self, source: StorageBase, target: StorageBase,
                                   agent_id: str, batch_size: int) -> int:
@@ -286,8 +329,12 @@ class StorageMigrator:
             try:
                 # Load data
                 vectors = np.load(vectors_file)
-                with open(metadata_file, 'r') as f:
-                    metadata_list = json.load(f)
+                metadata_data = self._load_json_safe(metadata_file)
+
+                if not metadata_data or 'experiences' not in metadata_data:
+                    return 0
+
+                metadata_list = metadata_data['experiences']
 
                 # Migrate in batches
                 for i in range(0, len(vectors), batch_size):
@@ -310,6 +357,39 @@ class StorageMigrator:
                 self.logger.error(f"Error migrating experiences for {agent_id}: {e}")
 
         return count
+
+    def _get_all_agent_ids(self, storage: StorageBase) -> List[str]:
+        """Get all agent IDs from storage."""
+        try:
+            # Try to use storage's method if available
+            if hasattr(storage, '_get_all_agent_ids'):
+                return storage._get_all_agent_ids()
+            elif hasattr(storage, 'base_path'):
+                # For file-based storage
+                agents_path = storage.base_path / "agents"
+                if agents_path.exists():
+                    return [d.name for d in agents_path.iterdir() if d.is_dir()]
+            elif hasattr(storage, '_json_storage_path'):
+                # For VectorDBStorage
+                agents_path = storage._json_storage_path / "agents"
+                if agents_path.exists():
+                    return [d.name for d in agents_path.iterdir() if d.is_dir()]
+
+            return []
+        except Exception as e:
+            self.logger.error(f"Error getting agent IDs: {e}")
+            return []
+
+    def _load_json_safe(self, filepath: Path) -> Optional[Dict[str, Any]]:
+        """Safely load JSON file."""
+        try:
+            if not filepath.exists():
+                return None
+            with open(filepath, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            self.logger.error(f"Failed to load JSON from {filepath}: {e}")
+            return None
 
     def _create_backup(self, storage: StorageBase, agent_ids: List[str]) -> str:
         """Create backup of agents before migration."""
@@ -442,7 +522,7 @@ class StorageMigrator:
     def verify_migration(self, source: StorageBase, target: StorageBase,
                          agent_ids: List[str], sample_size: int = 100) -> Dict[str, Any]:
         """
-        Verify that migration was successful.
+        Verify that migration was successful including Sprint 9 data.
 
         Args:
             source: Original storage
@@ -457,6 +537,7 @@ class StorageMigrator:
             'verified': True,
             'agent_checks': {},
             'experience_checks': {},
+            'sprint9_checks': {},  # NEW
             'errors': []
         }
 
@@ -465,7 +546,9 @@ class StorageMigrator:
                 'profile_match': False,
                 'environments_match': False,
                 'data_integrity': True,
-                'experience_sample_match': False
+                'experience_sample_match': False,
+                'continuous_networks_match': True,    # NEW Sprint 9
+                'action_adapters_match': True         # NEW Sprint 9
             }
 
             try:
@@ -478,11 +561,31 @@ class StorageMigrator:
                     agent_result['profile_match'] = (
                             source_profile.get('agent_id') == target_profile.get('agent_id')
                     )
+                elif source_profile is None and target_profile is None:
+                    agent_result['profile_match'] = True
 
                 # Check environments
                 source_envs = set(source.list_environments(agent_id))
                 target_envs = set(target.list_environments(agent_id))
                 agent_result['environments_match'] = source_envs == target_envs
+
+                # NEW Sprint 9: Check continuous networks
+                try:
+                    source_networks = set(source.list_continuous_networks(agent_id))
+                    target_networks = set(target.list_continuous_networks(agent_id))
+                    agent_result['continuous_networks_match'] = source_networks == target_networks
+                except AttributeError:
+                    # Source doesn't support continuous networks
+                    agent_result['continuous_networks_match'] = True
+
+                # NEW Sprint 9: Check action adapters
+                try:
+                    source_adapters = set(source.list_action_adapters(agent_id))
+                    target_adapters = set(target.list_action_adapters(agent_id))
+                    agent_result['action_adapters_match'] = source_adapters == target_adapters
+                except AttributeError:
+                    # Source doesn't support action adapters
+                    agent_result['action_adapters_match'] = True
 
                 # Sample experience verification
                 if sample_size > 0:
@@ -565,6 +668,8 @@ class StorageMigrator:
             'storage_type': type(storage).__name__,
             'agents': {},
             'total_experiences': 0,
+            'total_continuous_networks': 0,  # NEW Sprint 9
+            'total_action_adapters': 0,      # NEW Sprint 9
             'total_size_mb': 0
         }
 
@@ -580,15 +685,25 @@ class StorageMigrator:
                 elif hasattr(storage, 'get_storage_stats'):
                     agent_stats = storage.get_storage_stats(agent_id)
                     stats.update(agent_stats)
+
+                # NEW Sprint 9: Count continuous networks and adapters
+                try:
+                    stats['total_continuous_networks'] = len(storage.list_continuous_networks(agent_id))
+                    stats['total_action_adapters'] = len(storage.list_action_adapters(agent_id))
+                except AttributeError:
+                    pass
+
             else:
                 # Global stats
-                agent_ids = storage._get_all_agent_ids()
+                agent_ids = self._get_all_agent_ids(storage)
                 stats['total_agents'] = len(agent_ids)
 
                 for agent_id in agent_ids:
                     agent_stats = {
                         'environments': len(storage.list_environments(agent_id)),
-                        'experiences': 0
+                        'experiences': 0,
+                        'continuous_networks': 0,  # NEW Sprint 9
+                        'action_adapters': 0       # NEW Sprint 9
                     }
 
                     # Count experiences
@@ -596,6 +711,17 @@ class StorageMigrator:
                         exp_count = storage._get_vector_count(agent_id)
                         agent_stats['experiences'] = exp_count
                         stats['total_experiences'] += exp_count
+
+                    # NEW Sprint 9: Count continuous networks and adapters
+                    try:
+                        network_count = len(storage.list_continuous_networks(agent_id))
+                        adapter_count = len(storage.list_action_adapters(agent_id))
+                        agent_stats['continuous_networks'] = network_count
+                        agent_stats['action_adapters'] = adapter_count
+                        stats['total_continuous_networks'] += network_count
+                        stats['total_action_adapters'] += adapter_count
+                    except AttributeError:
+                        pass
 
                     stats['agents'][agent_id] = agent_stats
 

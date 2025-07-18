@@ -147,6 +147,11 @@ class AgentByte:
 
         self.logger.info(f"Agent Byte {agent_id} initialized with checkpointing: {enable_checkpointing}")
 
+        # NEW: Initialize continuous networks support
+        self.continuous_networks = {}
+
+        # Load existing continuous networks
+        self._load_continuous_networks()
 
     def _load_autoencoders(self):
         """Load any existing autoencoders for this agent."""
@@ -183,10 +188,19 @@ class AgentByte:
             'total_episodes': self.total_episodes,
             'config': self.config.to_dict(),
             'last_updated': datetime.now().isoformat(),
-            'autoencoder_enabled': self.state_normalizer.use_autoencoder
+            'autoencoder_enabled': self.state_normalizer.use_autoencoder,
+            # NEW: Add continuous network support info
+            'continuous_networks_enabled': hasattr(self, 'continuous_networks'),
+            'continuous_network_count': len(getattr(self, 'continuous_networks', {}))
         }
 
-        self.storage.save_agent_profile(self.agent_id, profile)
+        success = self.storage.save_agent_profile(self.agent_id, profile)
+
+        if success:
+            # Also save continuous networks
+            self._save_continuous_networks()
+        else:
+            self.logger.error("Failed to save agent profile")
 
     # NEW Sprint 5: Checkpoint management methods
     def _register_checkpoint_providers(self):
@@ -247,7 +261,8 @@ class AgentByte:
               episodes: int,
               env_metadata: Optional[Dict[str, Any]] = None,
               session_id: Optional[str] = None,
-              enable_recovery: bool = True) -> Dict[str, Any]:  # NEW Sprint 5 parameter
+              enable_recovery: bool = True) -> dict[str | Any, str | None | int | float | list[Any] | dict[
+        str, Any] | Any] | None:  # NEW Sprint 5 parameter
         """
         Train the agent on any environment with enhanced error handling and checkpointing.
 
@@ -1173,6 +1188,11 @@ class AgentByte:
             self._save_progress(self.current_environment)
         self.logger.info("Agent state saved")
 
+        # Save continuous networks
+        self._save_continuous_networks()
+
+        self.logger.info("Agent state saved")
+
     def __del__(self):
         """Enhanced cleanup on object destruction."""
         try:
@@ -1180,3 +1200,92 @@ class AgentByte:
                 self.checkpoint_manager.shutdown()
         except:
             pass
+
+    # New for fix_continuous_network.py
+
+    def _save_continuous_networks(self):
+        """Save any continuous networks to storage."""
+        if not hasattr(self, 'continuous_networks'):
+            return
+
+        try:
+            from .continuous_network import ContinuousNetworkStorageManager
+
+            storage_manager = ContinuousNetworkStorageManager(self.storage, self.agent_id)
+
+            for env_id, network_manager in self.continuous_networks.items():
+                success = storage_manager.save_continuous_network(env_id, network_manager)
+                if success:
+                    self.logger.debug(f"Saved continuous network for {env_id}")
+                else:
+                    self.logger.warning(f"Failed to save continuous network for {env_id}")
+
+        except Exception as e:
+            self.logger.error(f"Error saving continuous networks: {str(e)}")
+
+    def _load_continuous_networks(self):
+        """Load any saved continuous networks from storage."""
+        try:
+            from .continuous_network import ContinuousNetworkStorageManager
+
+            storage_manager = ContinuousNetworkStorageManager(self.storage, self.agent_id)
+
+            # Get list of saved networks
+            saved_networks = storage_manager.list_saved_networks()
+
+            if not saved_networks:
+                return
+
+            # Initialize continuous networks dictionary if not exists
+            if not hasattr(self, 'continuous_networks'):
+                self.continuous_networks = {}
+
+            for env_id in saved_networks:
+                # We'll need the action space to recreate the network
+                # For now, just log that we found saved networks
+                self.logger.info(f"Found saved continuous network for {env_id}")
+
+                # TODO: Load the network when we have the action space
+                # This will happen when the agent first encounters the environment
+
+        except Exception as e:
+            self.logger.error(f"Error loading continuous networks: {str(e)}")
+
+    def _get_or_create_continuous_network(self, env_id: str, action_space) -> Optional:
+        """Get or create a continuous network for an environment."""
+        try:
+            # Initialize continuous networks dict if not exists
+            if not hasattr(self, 'continuous_networks'):
+                self.continuous_networks = {}
+
+            # Return existing network if available
+            if env_id in self.continuous_networks:
+                return self.continuous_networks[env_id]
+
+            # Try to load from storage first
+            from .continuous_network import ContinuousNetworkStorageManager
+            storage_manager = ContinuousNetworkStorageManager(self.storage, self.agent_id)
+
+            network_manager = storage_manager.load_continuous_network(env_id, action_space)
+
+            if network_manager is None:
+                # Create new network if not found in storage
+                from .continuous_network import ContinuousNetworkManager
+                network_manager = ContinuousNetworkManager(
+                    state_size=256,  # Our normalized state size
+                    action_space=action_space,
+                    algorithm="auto"
+                )
+
+                self.logger.info(f"Created new continuous network for {env_id}")
+            else:
+                self.logger.info(f"Loaded continuous network for {env_id}")
+
+            # Store in memory
+            self.continuous_networks[env_id] = network_manager
+
+            return network_manager
+
+        except Exception as e:
+            self.logger.error(f"Error with continuous network for {env_id}: {str(e)}")
+            return None

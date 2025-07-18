@@ -11,9 +11,6 @@ from typing import Tuple, Dict, Any, Optional, List, Union
 import numpy as np
 from enum import Enum
 
-from numpy import signedinteger, bool_
-from numpy._typing import _64Bit
-
 
 class ActionSpaceType(Enum):
     """Enumeration of supported action space types."""
@@ -86,7 +83,7 @@ class ActionSpace:
         """Check if action space is hybrid."""
         return self.space_type == ActionSpaceType.HYBRID
 
-    def get_action_dim(self) -> int | signedinteger[_64Bit] | Any:
+    def get_action_dim(self) -> int:
         """Get dimensionality of action space."""
         if self.space_type == ActionSpaceType.DISCRETE:
             return 1  # Single discrete action
@@ -111,7 +108,7 @@ class ActionSpace:
         else:
             raise NotImplementedError(f"Sampling not implemented for {self.space_type}")
 
-    def contains(self, action: Union[int, np.ndarray]) -> bool_ | bool:
+    def contains(self, action: Union[int, np.ndarray]) -> bool:
         """Check if an action is valid in this space."""
         if self.space_type == ActionSpaceType.DISCRETE:
             return isinstance(action, (int, np.integer)) and 0 <= action < self.size
@@ -346,138 +343,113 @@ class Storage(ABC):
         pass
 
     @abstractmethod
-    def save_experience_vector(self, agent_id: str, vector: np.ndarray,
-                               metadata: Dict[str, Any]) -> bool:
+    def save_experience(self, agent_id: str, env_id: str,
+                        experience: Dict[str, Any]) -> bool:
         """
-        Save a single experience vector with metadata.
+        Save a single experience tuple.
 
         Args:
             agent_id: Unique identifier for the agent
-            vector: Experience vector (normalized state)
-            metadata: Associated metadata (action, reward, etc.)
+            env_id: Environment identifier
+            experience: Dictionary with keys: state, action, reward, next_state, done
 
         Returns:
             True if saved successfully, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def load_experiences(self, agent_id: str, env_id: str,
+                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Load experience data for an agent in a specific environment.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            env_id: Environment identifier
+            limit: Maximum number of experiences to return
+
+        Returns:
+            List of experience dictionaries
+        """
+        pass
+
+    @abstractmethod
+    def save_brain_state(self, agent_id: str, brain_type: str,
+                         state_data: Dict[str, Any]) -> bool:
+        """
+        Save neural network or brain state.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            brain_type: Type of brain ('neural', 'symbolic', 'dual')
+            state_data: State information to save
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def load_brain_state(self, agent_id: str, brain_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Load neural network or brain state.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            brain_type: Type of brain ('neural', 'symbolic', 'dual')
+
+        Returns:
+            State data dictionary or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def save_knowledge_base(self, agent_id: str,
+                            knowledge: Dict[str, Any]) -> bool:
+        """
+        Save knowledge base (skills, patterns, transfer history).
+
+        Args:
+            agent_id: Unique identifier for the agent
+            knowledge: Knowledge base dictionary
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def load_knowledge_base(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load knowledge base.
+
+        Args:
+            agent_id: Unique identifier for the agent
+
+        Returns:
+            Knowledge base dictionary or None if not found
         """
         pass
 
     @abstractmethod
     def search_similar_experiences(self, agent_id: str,
-                                   query_vector: np.ndarray,
-                                   k: int = 5) -> List[Dict[str, Any]]:
+                                   query_state: np.ndarray,
+                                   limit: int = 10,
+                                   similarity_threshold: float = 0.8) -> List[Dict[str, Any]]:
         """
-        Search for experiences similar to a query vector.
+        Search for experiences similar to a query state.
 
         Args:
             agent_id: Unique identifier for the agent
-            query_vector: Vector to find similar experiences for
-            k: Number of results to return
+            query_state: State to find similar experiences for
+            limit: Maximum number of results to return
+            similarity_threshold: Minimum similarity score (0-1)
 
         Returns:
             List of similar experience dictionaries with similarity scores
         """
         pass
-
-    @abstractmethod
-    def save_brain_state(self, agent_id: str, env_id: str,
-                         data: Dict[str, Any]) -> bool:
-        """
-        Save neural network or brain state for a specific environment.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-            data: Brain state data to save
-
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def load_brain_state(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load neural network or brain state for a specific environment.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-
-        Returns:
-            Brain state data dictionary or None if not found
-        """
-        pass
-
-    @abstractmethod
-    def save_knowledge(self, agent_id: str, env_id: str,
-                       data: Dict[str, Any]) -> bool:
-        """
-        Save knowledge base (skills, patterns, transfer history) for a specific environment.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-            data: Knowledge data to save
-
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def load_knowledge(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load knowledge base for a specific environment.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-
-        Returns:
-            Knowledge data dictionary or None if not found
-        """
-        pass
-
-    # Additional methods that JsonNumpyStorage provides
-    def save_autoencoder(self, agent_id: str, env_id: str,
-                         state_dict: Dict[str, Any]) -> bool:
-        """
-        Save autoencoder state (optional - for environments with autoencoders).
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-            state_dict: Autoencoder state dictionary
-
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        return False
-
-    def load_autoencoder(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load autoencoder state (optional).
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-
-        Returns:
-            Autoencoder state dictionary or None if not found
-        """
-        return None
-
-    def list_environments(self, agent_id: str) -> List[str]:
-        """
-        List all environments for which this agent has data.
-
-        Args:
-            agent_id: Unique identifier for the agent
-
-        Returns:
-            List of environment IDs
-        """
-        return []
 
     def clear_agent_data(self, agent_id: str) -> bool:
         """
@@ -499,122 +471,6 @@ class Storage(ABC):
             Dictionary with storage usage information
         """
         return {}
-
-    # Enhanced methods for continuous action support
-    def get_experience_count(self, agent_id: str) -> int:
-        """Get total number of experiences stored for an agent."""
-        return 0
-
-    def get_agent_profile(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Alias for load_agent_profile for consistency."""
-        return self.load_agent_profile(agent_id)
-
-    def list_autoencoders(self, agent_id: str) -> List[str]:
-        """
-        List all environments with saved autoencoders for an agent.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            List of environment IDs with autoencoders
-        """
-        return []
-
-    # NEW: Sprint 9 Continuous Action Space Support
-    @abstractmethod
-    def save_continuous_network_state(self, agent_id: str, env_id: str,
-                                     network_state: Dict[str, Any]) -> bool:
-        """
-        Save continuous network state (SAC/DDPG weights and training state).
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-            network_state: Dictionary containing:
-                - algorithm: "sac" or "ddpg"
-                - state_dict: Network weights and parameters
-                - training_info: Training metadata
-                - hyperparameters: Algorithm configuration
-
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def load_continuous_network_state(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load continuous network state.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-
-        Returns:
-            Network state dictionary or None if not found
-        """
-        pass
-
-    @abstractmethod
-    def save_action_adapter_config(self, agent_id: str, env_id: str,
-                                  adapter_config: Dict[str, Any]) -> bool:
-        """
-        Save action adapter configuration.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-            adapter_config: Dictionary containing:
-                - source_space: Source action space specification
-                - target_space: Target action space specification
-                - adapter_type: Type of adapter used
-                - parameters: Adapter-specific parameters
-
-        Returns:
-            True if saved successfully, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    def load_action_adapter_config(self, agent_id: str, env_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load action adapter configuration.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            env_id: Environment identifier
-
-        Returns:
-            Adapter configuration dictionary or None if not found
-        """
-        pass
-
-    @abstractmethod
-    def list_continuous_networks(self, agent_id: str) -> List[str]:
-        """
-        List all environments with saved continuous networks for an agent.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            List of environment IDs with continuous networks
-        """
-        pass
-
-    @abstractmethod
-    def list_action_adapters(self, agent_id: str) -> List[str]:
-        """
-        List all environments with saved action adapters for an agent.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            List of environment IDs with action adapters
-        """
-        pass
 
 
 # Utility functions for action space handling

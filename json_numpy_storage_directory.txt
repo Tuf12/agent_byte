@@ -1,0 +1,22 @@
+ """
+    Storage implementation using JSON files and numpy arrays.
+    Enhanced with Sprint 5 robustness features.
+
+    Directory structure:
+    base_path/
+    ├── agents/
+    │   └── {agent_id}/
+    │       ├── profile.json
+    │       ├── environments/
+    │       │   └── {env_id}/
+    │       │       ├── brain_state.json
+    │       │       ├── knowledge.json
+    │       │       └── autoencoder.json
+    │       └── experiences/
+    │           ├── vectors.npy
+    │           ├── metadata.json
+    │           └── index.json
+    ├── wal/                    # NEW Sprint 5: Write-ahead logging
+    ├── .checksums.json         # NEW Sprint 5: File integrity
+    └── backups/                # NEW Sprint 5: Automatic backups
+    """
