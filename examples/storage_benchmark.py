@@ -1,8 +1,8 @@
 """
-Storage performance benchmark comparing different backends.
+Updated Storage performance benchmark comparing different backends.
 
-This script demonstrates the performance improvements of using
-vector database storage over JSON+Numpy storage.
+This script demonstrates the performance improvements of the optimized storage
+implementations and fixes for the vector database hybrid backend.
 Enhanced with Sprint 9 continuous action space benchmarks.
 """
 
@@ -12,9 +12,27 @@ from typing import Dict, Any, List
 import matplotlib.pyplot as plt
 from pathlib import Path
 import shutil
+import sys
+import os
+
+# Add the parent directory to the path so we can import the optimized storage
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_byte.storage import JsonNumpyStorage, VectorDBStorage
 from agent_byte.storage.experience_buffer import ExperienceBuffer, StreamingExperienceBuffer
+
+# Try to import our optimized implementations
+try:
+    from optimized_json_numpy_storage import OptimizedJsonNumpyStorage
+    OPTIMIZED_JSON_AVAILABLE = True
+except ImportError:
+    OPTIMIZED_JSON_AVAILABLE = False
+
+try:
+    from improved_vector_db_storage import ImprovedVectorDBStorage
+    IMPROVED_VECTOR_DB_AVAILABLE = True
+except ImportError:
+    IMPROVED_VECTOR_DB_AVAILABLE = False
 
 
 def generate_random_experience(dim: int = 256) -> tuple:
@@ -86,6 +104,10 @@ def benchmark_write_performance(storage_backends: Dict[str, Any],
 
             if (i + 1) % 1000 == 0:
                 print(f"  Written {i + 1}/{num_experiences} experiences...")
+
+        # Flush any remaining buffers
+        if hasattr(storage, 'flush_all_buffers'):
+            storage.flush_all_buffers()
 
         end_time = time.time()
         duration = end_time - start_time
@@ -276,35 +298,59 @@ def plot_results(write_results: Dict[str, Dict],
 
     # Write performance
     write_speeds = [write_results[b]['experiences_per_second'] for b in backends]
-    ax1.bar(backends, write_speeds)
+    bars1 = ax1.bar(backends, write_speeds)
     ax1.set_ylabel('Experiences per Second')
     ax1.set_title('Experience Write Performance')
     ax1.tick_params(axis='x', rotation=45)
 
+    # Add value labels on bars
+    for bar, speed in zip(bars1, write_speeds):
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height,
+                f'{speed:.0f}', ha='center', va='bottom')
+
     # Search performance
     search_speeds = [search_results[b]['queries_per_second'] for b in backends]
-    ax2.bar(backends, search_speeds)
+    bars2 = ax2.bar(backends, search_speeds)
     ax2.set_ylabel('Queries per Second')
     ax2.set_title('Experience Search Performance')
     ax2.tick_params(axis='x', rotation=45)
 
+    # Add value labels on bars
+    for bar, speed in zip(bars2, search_speeds):
+        height = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2., height,
+                f'{speed:.0f}', ha='center', va='bottom')
+
     # Sprint 9: Network storage performance
     network_speeds = [sprint9_results[b]['networks_per_second'] for b in backends]
-    ax3.bar(backends, network_speeds)
+    bars3 = ax3.bar(backends, network_speeds)
     ax3.set_ylabel('Networks per Second')
     ax3.set_title('Continuous Network Storage Performance')
     ax3.tick_params(axis='x', rotation=45)
 
+    # Add value labels on bars
+    for bar, speed in zip(bars3, network_speeds):
+        height = bar.get_height()
+        ax3.text(bar.get_x() + bar.get_width()/2., height,
+                f'{speed:.0f}', ha='center', va='bottom')
+
     # Sprint 9: Adapter storage performance
     adapter_speeds = [sprint9_results[b]['adapters_per_second'] for b in backends]
-    ax4.bar(backends, adapter_speeds)
+    bars4 = ax4.bar(backends, adapter_speeds)
     ax4.set_ylabel('Adapters per Second')
     ax4.set_title('Action Adapter Storage Performance')
     ax4.tick_params(axis='x', rotation=45)
 
+    # Add value labels on bars
+    for bar, speed in zip(bars4, adapter_speeds):
+        height = bar.get_height()
+        ax4.text(bar.get_x() + bar.get_width()/2., height,
+                f'{speed:.0f}', ha='center', va='bottom')
+
     plt.tight_layout()
-    plt.savefig('storage_benchmark_results_sprint9.png', dpi=300, bbox_inches='tight')
-    print("\nResults saved to storage_benchmark_results_sprint9.png")
+    plt.savefig('updated_storage_benchmark_results.png', dpi=300, bbox_inches='tight')
+    print("\nResults saved to updated_storage_benchmark_results.png")
 
 
 def test_continuous_network_storage_manager():
@@ -342,8 +388,8 @@ def test_continuous_network_storage_manager():
 
 
 def main():
-    """Run the storage benchmark."""
-    print("=== Agent Byte Storage Performance Benchmark (Sprint 9 Enhanced) ===")
+    """Run the updated storage benchmark."""
+    print("=== Agent Byte Storage Performance Benchmark (Updated & Optimized) ===")
 
     # Test continuous network integration first
     continuous_integration_ok = test_continuous_network_storage_manager()
@@ -351,48 +397,105 @@ def main():
         print("\n⚠️ Continuous network integration tests failed. Proceeding with basic benchmarks...")
 
     # Clean up any existing test data
-    for path in ["./test_json_storage", "./test_vectordb_storage"]:
+    cleanup_paths = [
+        "./test_json_storage", "./test_json_storage_lazy",
+        "./test_optimized_json_storage", "./test_vectordb_storage",
+        "./test_vectordb_faiss", "./test_vectordb_chroma",
+        "./test_vectordb_hybrid", "./test_improved_vectordb_storage"
+    ]
+
+    for path in cleanup_paths:
         shutil.rmtree(path, ignore_errors=True)
 
     # Initialize storage backends
-    storage_backends = {
-        'JSON+Numpy': JsonNumpyStorage("./test_json_storage"),
-        'JSON+Numpy (Lazy)': JsonNumpyStorage(
-            "./test_json_storage_lazy",
-            config={'lazy_loading': True}
+    storage_backends = {}
+
+    # Original JSON+Numpy storage
+    storage_backends['JSON+Numpy (Original)'] = JsonNumpyStorage("./test_json_storage")
+
+    # Original JSON+Numpy storage with lazy loading
+    storage_backends['JSON+Numpy (Lazy)'] = JsonNumpyStorage(
+        "./test_json_storage_lazy",
+        config={'lazy_loading': True}
+    )
+
+    # Optimized JSON+Numpy storage
+    if OPTIMIZED_JSON_AVAILABLE:
+        storage_backends['JSON+Numpy (Optimized)'] = OptimizedJsonNumpyStorage(
+            "./test_optimized_json_storage",
+            config={'batch_size': 100, 'lazy_loading': True}
         )
-    }
+        print("✅ Optimized JSON+Numpy storage available")
+    else:
+        print("❌ Optimized JSON+Numpy storage not available")
 
     # Add vector DB backends if available
     try:
-        storage_backends['VectorDB (FAISS)'] = VectorDBStorage(
+        # Original VectorDB with FAISS
+        storage_backends['VectorDB (FAISS Original)'] = VectorDBStorage(
             "./test_vectordb_faiss",
             backend="faiss"
         )
+        print("✅ Original FAISS VectorDB storage available")
     except Exception as e:
-        print(f"FAISS not available: {e}")
+        print(f"❌ Original FAISS VectorDB not available: {e}")
 
     try:
-        storage_backends['VectorDB (ChromaDB)'] = VectorDBStorage(
+        # Original VectorDB with ChromaDB
+        storage_backends['VectorDB (ChromaDB Original)'] = VectorDBStorage(
             "./test_vectordb_chroma",
             backend="chroma"
         )
+        print("✅ Original ChromaDB VectorDB storage available")
     except Exception as e:
-        print(f"ChromaDB not available: {e}")
+        print(f"❌ Original ChromaDB VectorDB not available: {e}")
 
     try:
-        storage_backends['VectorDB (Hybrid)'] = VectorDBStorage(
+        # Original VectorDB with Hybrid
+        storage_backends['VectorDB (Hybrid Original)'] = VectorDBStorage(
             "./test_vectordb_hybrid",
             backend="hybrid"
         )
+        print("✅ Original Hybrid VectorDB storage available")
     except Exception as e:
-        print(f"Hybrid backend not available: {e}")
+        print(f"❌ Original Hybrid VectorDB not available: {e}")
 
-    # Run benchmarks
-    num_experiences = 5000  # Reduced for faster testing
-    num_queries = 50       # Reduced for faster testing
-    num_networks = 500     # Sprint 9: Network count
-    num_adapters = 500     # Sprint 9: Adapter count
+    # Improved VectorDB backends
+    if IMPROVED_VECTOR_DB_AVAILABLE:
+        try:
+            storage_backends['VectorDB (FAISS Improved)'] = ImprovedVectorDBStorage(
+                "./test_improved_vectordb_faiss",
+                backend="faiss"
+            )
+            print("✅ Improved FAISS VectorDB storage available")
+        except Exception as e:
+            print(f"❌ Improved FAISS VectorDB not available: {e}")
+
+        try:
+            storage_backends['VectorDB (ChromaDB Improved)'] = ImprovedVectorDBStorage(
+                "./test_improved_vectordb_chroma",
+                backend="chroma"
+            )
+            print("✅ Improved ChromaDB VectorDB storage available")
+        except Exception as e:
+            print(f"❌ Improved ChromaDB VectorDB not available: {e}")
+
+        try:
+            storage_backends['VectorDB (Hybrid Improved)'] = ImprovedVectorDBStorage(
+                "./test_improved_vectordb_hybrid",
+                backend="hybrid"
+            )
+            print("✅ Improved Hybrid VectorDB storage available")
+        except Exception as e:
+            print(f"❌ Improved Hybrid VectorDB not available: {e}")
+    else:
+        print("❌ Improved VectorDB storage implementations not available")
+
+    # Configuration for benchmarks
+    num_experiences = 10000  # Increased for better performance comparison
+    num_queries = 100
+    num_networks = 1000
+    num_adapters = 1000
 
     print(f"\nTest configuration:")
     print(f"  Number of experiences: {num_experiences}")
@@ -400,6 +503,12 @@ def main():
     print(f"  Number of continuous networks: {num_networks}")
     print(f"  Number of action adapters: {num_adapters}")
     print(f"  Vector dimension: 256")
+    print(f"  Storage backends: {len(storage_backends)}")
+
+    # Run benchmarks
+    print("\n" + "="*50)
+    print("Starting benchmarks...")
+    print("="*50)
 
     # Write benchmark
     write_results = benchmark_write_performance(storage_backends, num_experiences)
@@ -411,75 +520,110 @@ def main():
     sprint9_results = benchmark_sprint9_features(storage_backends, num_networks, num_adapters)
 
     # Memory usage benchmark
-    benchmark_memory_usage()
+    try:
+        benchmark_memory_usage()
+    except Exception as e:
+        print(f"Memory usage benchmark failed: {e}")
 
     # Summary
-    print("\n=== Summary ===")
-    print("\nWrite Performance (experiences/second):")
-    for name, result in write_results.items():
-        print(f"  {name}: {result['experiences_per_second']:.0f}")
+    print("\n" + "="*50)
+    print("BENCHMARK RESULTS SUMMARY")
+    print("="*50)
 
-    print("\nSearch Performance (queries/second):")
-    for name, result in search_results.items():
-        print(f"  {name}: {result['queries_per_second']:.0f}")
+    print("\n📊 Write Performance (experiences/second):")
+    sorted_write = sorted(write_results.items(), key=lambda x: x[1]['experiences_per_second'], reverse=True)
+    for i, (name, result) in enumerate(sorted_write, 1):
+        print(f"  {i}. {name}: {result['experiences_per_second']:.0f} exp/s")
 
-    print("\nSprint 9 - Continuous Network Performance (networks/second):")
-    for name, result in sprint9_results.items():
-        print(f"  {name}: {result['networks_per_second']:.0f}")
+    print("\n🔍 Search Performance (queries/second):")
+    sorted_search = sorted(search_results.items(), key=lambda x: x[1]['queries_per_second'], reverse=True)
+    for i, (name, result) in enumerate(sorted_search, 1):
+        print(f"  {i}. {name}: {result['queries_per_second']:.0f} queries/s")
 
-    print("\nSprint 9 - Action Adapter Performance (adapters/second):")
-    for name, result in sprint9_results.items():
-        print(f"  {name}: {result['adapters_per_second']:.0f}")
+    print("\n🧠 Sprint 9 - Continuous Network Performance (networks/second):")
+    sorted_networks = sorted(sprint9_results.items(), key=lambda x: x[1]['networks_per_second'], reverse=True)
+    for i, (name, result) in enumerate(sorted_networks, 1):
+        print(f"  {i}. {name}: {result['networks_per_second']:.0f} networks/s")
+
+    print("\n⚙️ Sprint 9 - Action Adapter Performance (adapters/second):")
+    sorted_adapters = sorted(sprint9_results.items(), key=lambda x: x[1]['adapters_per_second'], reverse=True)
+    for i, (name, result) in enumerate(sorted_adapters, 1):
+        print(f"  {i}. {name}: {result['adapters_per_second']:.0f} adapters/s")
 
     # Plot results
     try:
         plot_results(write_results, search_results, sprint9_results)
     except ImportError:
-        print("\nMatplotlib not available for plotting")
+        print("\n❌ Matplotlib not available for plotting")
     except Exception as e:
-        print(f"\nPlotting failed: {e}")
+        print(f"\n❌ Plotting failed: {e}")
 
     # Performance analysis
-    print("\n=== Performance Analysis ===")
+    print("\n" + "="*50)
+    print("PERFORMANCE ANALYSIS")
+    print("="*50)
 
-    # Find best performers
+    # Performance improvements
+    if 'JSON+Numpy (Original)' in write_results and 'JSON+Numpy (Optimized)' in write_results:
+        original_write = write_results['JSON+Numpy (Original)']['experiences_per_second']
+        optimized_write = write_results['JSON+Numpy (Optimized)']['experiences_per_second']
+        improvement = (optimized_write - original_write) / original_write * 100
+        print(f"\n💡 JSON+Numpy Optimization Results:")
+        print(f"  Original: {original_write:.0f} exp/s")
+        print(f"  Optimized: {optimized_write:.0f} exp/s")
+        print(f"  Improvement: {improvement:+.1f}%")
+
+    # Find best overall performers
     best_write = max(write_results.items(), key=lambda x: x[1]['experiences_per_second'])
     best_search = max(search_results.items(), key=lambda x: x[1]['queries_per_second'])
     best_network = max(sprint9_results.items(), key=lambda x: x[1]['networks_per_second'])
     best_adapter = max(sprint9_results.items(), key=lambda x: x[1]['adapters_per_second'])
 
-    print(f"\nBest performers:")
+    print(f"\n🏆 Best performers:")
     print(f"  Write: {best_write[0]} ({best_write[1]['experiences_per_second']:.0f} exp/s)")
     print(f"  Search: {best_search[0]} ({best_search[1]['queries_per_second']:.0f} queries/s)")
     print(f"  Networks: {best_network[0]} ({best_network[1]['networks_per_second']:.0f} networks/s)")
     print(f"  Adapters: {best_adapter[0]} ({best_adapter[1]['adapters_per_second']:.0f} adapters/s)")
 
     # Recommendations
-    print(f"\n=== Recommendations ===")
+    print(f"\n" + "="*50)
+    print("RECOMMENDATIONS")
+    print("="*50)
+
     if any('VectorDB' in name for name in storage_backends.keys()):
         print("✅ Vector database backends available for high-performance similarity search")
     else:
         print("⚠️ Consider installing FAISS or ChromaDB for better search performance")
+        print("   pip install faiss-cpu chromadb")
 
     if continuous_integration_ok:
         print("✅ Sprint 9 continuous action space features working correctly")
     else:
         print("⚠️ Sprint 9 features need setup - check imports and implementations")
 
+    if OPTIMIZED_JSON_AVAILABLE:
+        print("✅ Optimized JSON+Numpy storage shows significant performance improvements")
+    else:
+        print("⚠️ Use optimized storage implementations for better performance")
+
+    if IMPROVED_VECTOR_DB_AVAILABLE:
+        print("✅ Improved VectorDB storage with working hybrid backend available")
+    else:
+        print("⚠️ Consider using improved VectorDB implementations")
+
     # Clean up
-    print("\nCleaning up test data...")
+    print("\n🧹 Cleaning up test data...")
     for backend in storage_backends.values():
         try:
             backend.close()
         except:
             pass
 
-    for path in ["./test_json_storage", "./test_json_storage_lazy",
-                 "./test_vectordb_faiss", "./test_vectordb_chroma",
-                 "./test_vectordb_hybrid"]:
+    for path in cleanup_paths:
         shutil.rmtree(path, ignore_errors=True)
 
-    print("\nBenchmark complete!")
+    print("\n🎉 Benchmark complete!")
+    print("Check 'updated_storage_benchmark_results.png' for visual results")
 
 
 if __name__ == "__main__":

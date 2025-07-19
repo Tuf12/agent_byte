@@ -6,11 +6,17 @@ similarity search. Enhanced with Sprint 9 continuous action space support.
 """
 
 import json
+from collections import defaultdict
+
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 import logging
 import time
+import sqlite3
+
+import faiss
+print("FAISS GPU available:", faiss.get_num_gpus())
 
 from .base import StorageBase
 
@@ -34,6 +40,7 @@ class VectorDBStorage(StorageBase):
             config: Storage configuration
         """
         super().__init__(config)
+        self._vector_buffers = None
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.backend = backend
@@ -65,13 +72,14 @@ class VectorDBStorage(StorageBase):
             self._init_fallback()
 
     def _init_faiss(self):
-        """Initialize FAISS backend."""
+        """Initialize FAISS backend (CPU-only for compatibility)."""
         try:
             import faiss
             self.vector_dim = 256
 
-            # Create index
-            self.index = faiss.IndexFlatIP(self.vector_dim)  # Inner product (cosine similarity)
+            # Force CPU-only to avoid GPU compatibility issues
+            self.index = faiss.IndexFlatIP(self.vector_dim)
+            print("FAISS: Using CPU (forced for stability)")
 
             # Storage for metadata
             self.vector_metadata = {}
@@ -81,34 +89,122 @@ class VectorDBStorage(StorageBase):
             metadata_file = self.base_path / "faiss_metadata.json"
 
             if index_file.exists() and metadata_file.exists():
-                self.index = faiss.read_index(str(index_file))
-                with open(metadata_file, 'r') as f:
-                    self.vector_metadata = json.load(f)
+                try:
+                    self.index = faiss.read_index(str(index_file))
+                    with open(metadata_file, 'r') as f:
+                        self.vector_metadata = json.load(f)
+                    print(f"Loaded existing FAISS index with {self.index.ntotal} vectors")
+                except Exception as e:
+                    print(f"Failed to load existing index: {e}")
 
         except ImportError:
             raise ImportError("FAISS not available. Install with: pip install faiss-cpu")
 
-    def _init_chroma(self):
-        """Initialize ChromaDB backend."""
+    def _search_hybrid(self, agent_id: str, query_vector: np.ndarray, k: int) -> List[Dict[str, Any]]:
+        """Search using hybrid backend (FAISS + SQLite)."""
         try:
-            import chromadb
+            if self.index.ntotal == 0:
+                return []
 
-            # Create client
-            self.chroma_client = chromadb.PersistentClient(path=str(self.base_path / "chroma"))
-
-            # Get or create collection
-            self.collection = self.chroma_client.get_or_create_collection(
-                name="agent_experiences",
-                metadata={"description": "Agent experience vectors"}
+            # Search in FAISS for similarity
+            search_k = min(k * 3, self.index.ntotal)
+            similarities, indices = self.index.search(
+                query_vector.reshape(1, -1).astype(np.float32),
+                search_k
             )
 
-        except ImportError:
-            raise ImportError("ChromaDB not available. Install with: pip install chromadb")
+            # Get metadata from SQLite for matching vectors
+            results = []
+            for similarity, idx in zip(similarities[0], indices[0]):
+                if idx == -1:
+                    break
+
+                # Query SQLite for metadata
+                cursor = self.conn.execute(
+                    '''SELECT metadata FROM experience_metadata 
+                       WHERE agent_id = ? AND vector_index = ?''',
+                    (agent_id, int(idx))
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    metadata = json.loads(row[0])
+                    results.append({
+                        'metadata': metadata,
+                        'similarity': float(similarity),
+                        'vector_index': int(idx)
+                    })
+
+                    if len(results) >= k:
+                        break
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Hybrid search error: {e}")
+            return []
 
     def _init_hybrid(self):
         """Initialize hybrid backend (FAISS + SQLite)."""
-        # For now, use FAISS as primary with JSON metadata
-        self._init_faiss()
+        try:
+            # Initialize FAISS for vector similarity
+            import faiss
+            import sqlite3
+            self.vector_dim = 256
+            self.index = faiss.IndexFlatIP(self.vector_dim)
+            self.vector_metadata = {}
+
+            # Initialize SQLite for metadata
+            self.db_path = self.base_path / "metadata.db"
+            self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self.conn.execute("PRAGMA journal_mode=WAL")
+
+            # Create metadata table
+            self.conn.execute('''
+                CREATE TABLE IF NOT EXISTS experience_metadata (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_id TEXT NOT NULL,
+                    vector_index INTEGER NOT NULL,
+                    metadata TEXT NOT NULL,
+                    saved_at REAL NOT NULL,
+                    UNIQUE(agent_id, vector_index)
+                )
+            ''')
+            self.conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_agent_vector 
+                ON experience_metadata(agent_id, vector_index)
+            ''')
+            self.conn.commit()
+
+            self.logger.info("Hybrid backend (FAISS + SQLite) initialized")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize hybrid backend: {e}")
+            # Fall back to FAISS only
+            self._init_faiss()
+
+    def _save_vector_hybrid(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
+        """Save vector using hybrid backend (FAISS + SQLite)."""
+        try:
+            # Add vector to FAISS index
+            self.index.add(vector.reshape(1, -1).astype(np.float32))
+            vector_index = self.index.ntotal - 1
+
+            # Store metadata in SQLite
+            metadata_json = json.dumps(metadata)
+            self.conn.execute(
+                '''INSERT INTO experience_metadata 
+                   (agent_id, vector_index, metadata, saved_at) 
+                   VALUES (?, ?, ?, ?)''',
+                (agent_id, vector_index, metadata_json, time.time())
+            )
+            self.conn.commit()
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Hybrid save error: {e}")
+            return False
 
     def _init_fallback(self):
         """Initialize fallback in-memory storage."""
@@ -355,8 +451,7 @@ class VectorDBStorage(StorageBase):
 
     # Experience vector storage (vector database specific)
 
-    def save_experience_vector(self, agent_id: str, vector: np.ndarray,
-                             metadata: Dict[str, Any]) -> bool:
+    def save_experience_vector(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
         """Save experience vector for similarity search."""
         if not self._validate_vector(vector):
             return False
@@ -373,6 +468,8 @@ class VectorDBStorage(StorageBase):
                 return self._save_vector_faiss(agent_id, normalized_vector, metadata)
             elif self.backend == "chroma":
                 return self._save_vector_chroma(agent_id, normalized_vector, metadata)
+            elif self.backend == "hybrid":
+                return self._save_vector_hybrid(agent_id, normalized_vector, metadata)
             elif self.backend == "fallback":
                 return self._save_vector_fallback(agent_id, normalized_vector, metadata)
             else:
@@ -382,6 +479,87 @@ class VectorDBStorage(StorageBase):
         except Exception as e:
             self.logger.error(f"Failed to save experience vector: {e}")
             return False
+
+    def flush_all_buffers(self) -> bool:
+        """Manually flush all vector buffers."""
+        # For non-batching implementations, this is a no-op
+        return True
+
+    def _flush_vector_batch(self, agent_id: str) -> bool:
+        """Flush vector batch to backend."""
+        try:
+            vectors = self._vector_buffers[agent_id]
+            metadatas = self._metadata_buffers[agent_id]
+
+            if not vectors:
+                return True
+
+            if self.backend == "faiss":
+                # Batch add to FAISS
+                batch_vectors = np.array(vectors).astype(np.float32)
+                start_idx = self.index.ntotal
+                self.index.add(batch_vectors)
+
+                # Handle metadata in batch
+                for i, metadata in enumerate(metadatas):
+                    vector_id = f"{agent_id}_{start_idx + i}"
+                    self.vector_metadata[vector_id] = {
+                        'agent_id': agent_id,
+                        'metadata': metadata,
+                        'saved_at': time.time()
+                    }
+
+            elif self.backend == "hybrid":
+                # Batch add to FAISS
+                batch_vectors = np.array(vectors).astype(np.float32)
+                start_idx = self.index.ntotal
+                self.index.add(batch_vectors)
+
+                # Batch insert to SQLite
+                batch_data = []
+                for i, metadata in enumerate(metadatas):
+                    batch_data.append((
+                        agent_id,
+                        start_idx + i,
+                        json.dumps(metadata),
+                        time.time()
+                    ))
+
+                self.conn.executemany(
+                    '''INSERT INTO experience_metadata 
+                       (agent_id, vector_index, metadata, saved_at) 
+                       VALUES (?, ?, ?, ?)''',
+                    batch_data
+                )
+                self.conn.commit()
+
+            elif self.backend == "chroma":
+                # Batch add to ChromaDB
+                embeddings = [v.tolist() for v in vectors]
+                vector_ids = [f"{agent_id}_{int(time.time() * 1000000)}_{i}" for i in range(len(vectors))]
+                metadatas_with_agent = [{
+                    'agent_id': agent_id,
+                    **metadata,
+                    'saved_at': time.time()
+                } for metadata in metadatas]
+
+                self.collection.add(
+                    embeddings=embeddings,
+                    metadatas=metadatas_with_agent,
+                    ids=vector_ids
+                )
+
+            # Clear buffers
+            self._vector_buffers[agent_id].clear()
+            self._metadata_buffers[agent_id].clear()
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to flush vector batch: {e}")
+            return False
+
+
 
     def _save_vector_faiss(self, agent_id: str, vector: np.ndarray, metadata: Dict[str, Any]) -> bool:
         """Save vector using FAISS backend."""
@@ -462,6 +640,9 @@ class VectorDBStorage(StorageBase):
                 return self._search_chroma(agent_id, normalized_query, k)
             elif self.backend == "fallback":
                 return self._search_fallback(agent_id, normalized_query, k)
+            elif self.backend == "hybrid":  # ADD THIS LINE
+                return self._search_hybrid(agent_id, normalized_query, k)  # ADD THIS LINE
+
             else:
                 self.logger.error(f"Unsupported backend for search: {self.backend}")
                 return []
@@ -598,10 +779,17 @@ class VectorDBStorage(StorageBase):
     def close(self) -> None:
         """Close storage and clean up."""
         try:
+            # Flush any remaining buffers
+            if hasattr(self, 'flush_all_buffers'):
+                self.flush_all_buffers()
+
             if self.backend == "faiss":
                 self._save_faiss_state()
+            elif self.backend == "hybrid":
+                self._save_faiss_state()
+                if hasattr(self, 'conn'):
+                    self.conn.close()
             elif self.backend == "chroma" and hasattr(self, 'chroma_client'):
-                # ChromaDB handles persistence automatically
                 pass
             elif self.backend == "fallback":
                 self.vectors_storage.clear()
