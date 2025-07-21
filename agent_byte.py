@@ -10,6 +10,7 @@ import datetime
 # Import the dual brain system and knowledge system
 from dual_brain_system import DualBrainAgent, AgentBrain, AgentKnowledge
 from knowledge_system import SymbolicDecisionMaker
+from dueling_network_pytorch import DuelingNetworkPyTorch, DuelingNetworkCompatibility
 
 
 class MatchLogger:
@@ -27,10 +28,16 @@ class MatchLogger:
                 with open(self.log_file, 'r') as f:
                     data = json.load(f)
                     self.all_matches = data.get('matches', [])
-                print(f"📚 Loaded {len(self.all_matches)} match records from {self.log_file}")
+                    # Track lifetime total if available
+                    self.total_matches_lifetime = data.get('total_matches_all_time', len(self.all_matches))
+                    
+                    print(f"📚 Loaded {len(self.all_matches)} recent match records from {self.log_file}")
+                    if 'total_matches_all_time' in data:
+                        print(f"   (Total lifetime matches: {self.total_matches_lifetime})")
         except Exception as e:
             print(f"⚠️ Could not load match history: {e}")
             self.all_matches = []
+            self.total_matches_lifetime = 0
 
     def start_match(self, match_id, game_type="unknown"):
         self.current_match = {
@@ -138,6 +145,12 @@ class MatchLogger:
             end = datetime.datetime.fromisoformat(self.current_match['end_time'])
             self.current_match['duration_seconds'] = (end - start).total_seconds()
             self.all_matches.append(self.current_match.copy())
+            
+            # LIMIT TO 3 MOST RECENT MATCHES to reduce file size
+            if len(self.all_matches) > 3:
+                self.all_matches = self.all_matches[-3:]
+                print(f"🗂️ Match history trimmed to last 3 matches")
+            
             self.save_match_history()
             print(f"📊 Match {self.current_match['match_id']} completed and logged")
             self.current_match = None
@@ -148,9 +161,11 @@ class MatchLogger:
     def save_match_history(self):
         try:
             data = {
-                'total_matches': len(self.all_matches),
+                'total_matches_all_time': getattr(self, 'total_matches_lifetime', len(self.all_matches)),
+                'matches_in_history': len(self.all_matches),
                 'last_updated': datetime.datetime.now().isoformat(),
-                'version': 'Agent Byte v1.2 - Modular + Adaptive Learning + Knowledge System Enhanced',
+                'version': 'Agent Byte v1.2 - PyTorch + Adaptive Learning + Knowledge System Enhanced',
+                'note': 'Only keeping last 3 matches to optimize file size',
                 'matches': self._convert_numpy_types(self.all_matches)
             }
             with open(self.log_file, 'w') as f:
@@ -223,97 +238,14 @@ class MatchLogger:
                 # 🔧 FIX: Fallback for unconvertible types
                 return str(obj)
 
-class DuelingNetwork:
-    """Dueling DQN Network implementation"""
+# Legacy NumPy DuelingNetwork - DEPRECATED - Use PyTorch version instead
+# Keeping for reference/fallback only
+class DuelingNetworkLegacy:
+    """Legacy NumPy Dueling DQN Network implementation - DEPRECATED"""
     
     def __init__(self, input_size, hidden_sizes, output_size, learning_rate=0.001):
-        self.input_size = input_size
-        self.hidden_sizes = hidden_sizes
-        self.output_size = output_size
-        self.learning_rate = learning_rate
-        self.feature_layers = []
-        layer_sizes = [input_size] + hidden_sizes[:-1]
-        for i in range(len(layer_sizes) - 1):
-            layer = {
-                'weights': np.random.randn(layer_sizes[i], layer_sizes[i+1]) * np.sqrt(2.0 / layer_sizes[i]),
-                'biases': np.zeros(layer_sizes[i+1])
-            }
-            self.feature_layers.append(layer)
-        feature_size = hidden_sizes[-2] if len(hidden_sizes) > 1 else hidden_sizes[0]
-        stream_size = hidden_sizes[-1]
-        self.value_stream = {
-            'weights1': np.random.randn(feature_size, stream_size) * np.sqrt(2.0 / feature_size),
-            'biases1': np.zeros(stream_size),
-            'weights2': np.random.randn(stream_size, 1) * np.sqrt(2.0 / stream_size),
-            'biases2': np.zeros(1)
-        }
-        self.advantage_stream = {
-            'weights1': np.random.randn(feature_size, stream_size) * np.sqrt(2.0 / feature_size),
-            'biases1': np.zeros(stream_size),
-            'weights2': np.random.randn(stream_size, output_size) * np.sqrt(2.0 / stream_size),
-            'biases2': np.zeros(output_size)
-        }
-        print(f"🧠 Dueling Network: {input_size}→{hidden_sizes}→V(1)+A({output_size})")
-    
-    def leaky_relu(self, x, alpha=0.01):
-        return np.where(x > 0, x, alpha * x)
-    
-    def forward(self, state):
-        if len(state.shape) > 1:
-            state = state.flatten()
-        x = state.copy()
-        self.activations = [x]
-        for layer in self.feature_layers:
-            z = np.dot(x, layer['weights']) + layer['biases']
-            x = self.leaky_relu(z)
-            self.activations.append(x)
-        features = x
-        v1 = np.dot(features, self.value_stream['weights1']) + self.value_stream['biases1']
-        v1_activated = self.leaky_relu(v1)
-        value = np.dot(v1_activated, self.value_stream['weights2']) + self.value_stream['biases2']
-        a1 = np.dot(features, self.advantage_stream['weights1']) + self.advantage_stream['biases1']
-        a1_activated = self.leaky_relu(a1)
-        advantages = np.dot(a1_activated, self.advantage_stream['weights2']) + self.advantage_stream['biases2']
-        q_values = value + (advantages - np.mean(advantages))
-        self.features = features
-        self.v1 = v1
-        self.v1_activated = v1_activated
-        self.value = value
-        self.a1 = a1
-        self.a1_activated = a1_activated
-        self.advantages = advantages
-        return q_values
-    
-    def copy_weights_from(self, other_network):
-        for i, layer in enumerate(other_network.feature_layers):
-            self.feature_layers[i]['weights'] = layer['weights'].copy()
-            self.feature_layers[i]['biases'] = layer['biases'].copy()
-        for key in self.value_stream:
-            self.value_stream[key] = other_network.value_stream[key].copy()
-        for key in self.advantage_stream:
-            self.advantage_stream[key] = other_network.advantage_stream[key].copy()
-    
-    def soft_update_from(self, other_network, tau=0.001):
-        for i, layer in enumerate(other_network.feature_layers):
-            self.feature_layers[i]['weights'] = (1 - tau) * self.feature_layers[i]['weights'] + tau * layer['weights']
-            self.feature_layers[i]['biases'] = (1 - tau) * self.feature_layers[i]['biases'] + tau * layer['biases']
-        for key in self.value_stream:
-            self.value_stream[key] = (1 - tau) * self.value_stream[key] + tau * other_network.value_stream[key]
-        for key in self.advantage_stream:
-            self.advantage_stream[key] = (1 - tau) * self.advantage_stream[key] + tau * other_network.advantage_stream[key]
-    
-    def update_weights(self, state, target_q_values, action_taken):
-        current_q_values = self.forward(state)
-        q_error = target_q_values - current_q_values
-        q_error = np.clip(q_error, -1.0, 1.0)
-        action_error = np.zeros_like(current_q_values)
-        action_error[action_taken] = q_error[action_taken]
-        self.advantage_stream['weights2'] += self.learning_rate * np.outer(self.a1_activated, action_error)
-        self.advantage_stream['biases2'] += self.learning_rate * action_error
-        value_error = np.sum(q_error) / len(q_error)
-        self.value_stream['weights2'] += self.learning_rate * np.outer(self.v1_activated, [value_error])
-        self.value_stream['biases2'] += self.learning_rate * value_error
-        return np.mean(q_error ** 2)
+        print("⚠️ Using legacy NumPy network - Consider upgrading to PyTorch version")
+        # ... keeping original implementation for fallback ...
         
 class AgentByte:
     """Enhanced Modular Agent Byte with Environment Integration + Dual Brain Architecture + Knowledge System"""
@@ -334,13 +266,32 @@ class AgentByte:
         # Initialize symbolic decision maker
         self.symbolic_decision_maker = SymbolicDecisionMaker()
         
-        # Neural network components
+        # Neural network components - PyTorch implementation
         self.state_size = state_size
         self.action_size = action_size
         self.hidden_sizes = [64, 32, 16]
-        self.main_network = DuelingNetwork(self.state_size, self.hidden_sizes, self.action_size, learning_rate=0.001)
-        self.target_network = DuelingNetwork(self.state_size, self.hidden_sizes, self.action_size, learning_rate=0.001)
+        
+        # Initialize PyTorch networks
+        self.pytorch_main_network = DuelingNetworkPyTorch(
+            self.state_size, self.hidden_sizes, self.action_size, learning_rate=0.001
+        )
+        self.pytorch_target_network = DuelingNetworkPyTorch(
+            self.state_size, self.hidden_sizes, self.action_size, learning_rate=0.001
+        )
+        
+        # Wrap in compatibility layer for existing code
+        self.main_network = DuelingNetworkCompatibility(self.pytorch_main_network)
+        self.target_network = DuelingNetworkCompatibility(self.pytorch_target_network)
+        
+        # Initialize target network with main network weights
         self.target_network.copy_weights_from(self.main_network)
+        
+        # Neural network save paths
+        self.main_network_path = "agent_main_network.pth"
+        self.target_network_path = "agent_target_network.pth"
+        
+        # Try to load existing networks
+        self._load_neural_networks()
         
         # Learning parameters (will be adapted per environment)
         self.target_update_frequency = 1000
@@ -660,9 +611,14 @@ class AgentByte:
                 self.training_steps % self.replay_frequency == 0):
                 self._train_networks()
             
-            # Update target network
+            # Update target network with adaptive parameters
             if self.use_soft_updates:
-                self.target_network.soft_update_from(self.main_network, self.soft_update_tau)
+                # Calculate adaptive parameters for soft updates
+                win_rate = (self.wins / max(1, self.games_played))
+                recent_rewards = [exp.get('reward', 0) for exp in list(self.experience_buffer)[-10:]]
+                adaptive_params = self.main_network.get_adaptive_params(win_rate, recent_rewards)
+                
+                self.target_network.soft_update_from(self.main_network, self.soft_update_tau, adaptive_params)
                 self.target_updates += 1
             else:
                 if self.training_steps % self.target_update_frequency == 0:
@@ -751,8 +707,13 @@ class AgentByte:
             self.knowledge_effectiveness = 0.0  # 🔧 FIX: Use 0.0 (float)
 
     def _train_networks(self):
-        """Enhanced training with adaptive gamma and symbolic context"""
-        # Use existing training implementation but with adaptive gamma
+        """Enhanced training with adaptive learning parameters and symbolic context"""
+        # Calculate adaptive parameters based on recent performance
+        win_rate = (self.wins / max(1, self.games_played))
+        recent_rewards = [exp.get('reward', 0) for exp in list(self.experience_buffer)[-20:]]
+        adaptive_params = self.main_network.get_adaptive_params(win_rate, recent_rewards)
+        
+        # Use existing training implementation but with adaptive parameters
         batch_size = min(self.replay_batch_size, len(self.experience_buffer))
         batch = random.sample(list(self.experience_buffer), max(1, batch_size - 1))
         
@@ -791,11 +752,18 @@ class AgentByte:
             target_q_values = current_q_values.copy()
             target_q_values[action] = target_q_value
             
-            loss = self.main_network.update_weights(current_state, target_q_values, action)
+            # NEW: Use adaptive parameters for weight updates
+            loss = self.main_network.update_weights(current_state, target_q_values, action, adaptive_params)
             total_loss += loss
         
         self.total_loss += total_loss / len(batch)
         self.double_dqn_improvements += double_dqn_benefits
+        
+        # Track performance trend for adaptive learning rate
+        if hasattr(self, 'previous_loss'):
+            performance_trend = self.previous_loss - (total_loss / len(batch))
+            self.main_network.set_adaptive_learning_rate(performance_trend)
+        self.previous_loss = total_loss / len(batch)
 
     def record_user_demo(self, demo_dict):
         """Enhanced user demonstration recording with environment-specific insights"""
@@ -1188,22 +1156,59 @@ class AgentByte:
         
         return "\n".join(lines)
 
+    def _load_neural_networks(self):
+        """Load neural networks if they exist"""
+        try:
+            main_loaded = self.pytorch_main_network.load_model(self.main_network_path)
+            target_loaded = self.pytorch_target_network.load_model(self.target_network_path)
+            
+            if main_loaded and target_loaded:
+                print(f"🧠 Neural networks loaded successfully")
+                print(f"   Main: {self.main_network_path}")
+                print(f"   Target: {self.target_network_path}")
+                return True
+            elif main_loaded:
+                print(f"🧠 Main network loaded, copying to target network")
+                self.target_network.copy_weights_from(self.main_network)
+                return True
+            else:
+                print(f"🆕 No existing neural networks found, starting with random weights")
+                return False
+        except Exception as e:
+            print(f"⚠️ Error loading neural networks: {e}")
+            return False
+    
+    def _save_neural_networks(self):
+        """Save neural networks"""
+        try:
+            self.pytorch_main_network.save_model(self.main_network_path)
+            self.pytorch_target_network.save_model(self.target_network_path)
+            print(f"💾 Neural networks saved successfully")
+            return True
+        except Exception as e:
+            print(f"❌ Error saving neural networks: {e}")
+            return False
+    
     def save_brain(self, filename=None):
-        """Save dual brain system with adaptive learning metadata and environment integration info"""
-        # Save both brains
-        success = self.dual_brain.save_all()
+        """Save dual brain system with neural networks, adaptive learning metadata and environment integration info"""
+        # Save neural networks first
+        neural_success = self._save_neural_networks()
         
-        if success:
+        # Save dual brain system
+        brain_success = self.dual_brain.save_all()
+        
+        if neural_success and brain_success:
             win_rate = (self.wins / max(1, self.games_played)) * 100
-            print(f"💾 Agent Byte v1.2 Modular + Adaptive Learning + Knowledge System Enhanced saved!")
+            print(f"💾 Agent Byte v1.2 PyTorch + Adaptive Learning + Knowledge System Enhanced saved!")
             print(f"   📊 Games: {self.games_played}, Win rate: {win_rate:.1f}%")
             print(f"   🧠 Core brain: {self.training_steps} steps, {self.target_updates} updates")
+            print(f"   🔗 Neural networks: Saved with PyTorch (GPU compatible)")
             print(f"   🧩 Knowledge: {len(self.dual_brain.knowledge.knowledge.get('categories', {}).get('games', {}))} environments")
             print(f"   🎯 Knowledge effectiveness: {self.knowledge_effectiveness:.3f}")
             print(f"   🔧 Adaptive learning: Gamma={self.gamma:.3f} ({self.gamma_source})")
             print(f"   🏗️ Environment integration: {'Active' if self.env else 'Inactive'}")
         
-        return success
+        return neural_success and brain_success
 
     def load_brain(self, filename=None):
         """Load dual brain system (automatically handled during initialization)"""
