@@ -123,7 +123,7 @@ class ModularPongGame:
         agent_action = self.agent.get_action(current_state)
         
         # Execute step in environment
-        next_state, reward, game_ended = self.env.step(agent_action)
+        next_state, reward, game_ended = self.env.step(agent_action, 0)
         
         # Check for user demonstration to record
         if self.demo_learning_enabled and self.demo_recording_active:

@@ -17,7 +17,7 @@ class PongEnvironment:
         self.paddle_width = 10
         self.ball_size = 10
         self.paddle_speed = 8
-        self.ball_speed = 6
+        self.ball_speed = 8
         self.default_ball_speed = 6
         self.winning_score = 21
         
@@ -128,7 +128,7 @@ class PongEnvironment:
         else:
             return "Major failure - critical mistake"
 
-    def generate_lesson_from_reward(self, reward):
+    def generate_lesson_from_reward(self, reward, context=None):
         """Generate a learning lesson string from a reward in Pong context"""
         meaning = self.interpret_reward(reward)
         
@@ -147,7 +147,7 @@ class PongEnvironment:
             return f"Pong mistake made ({reward:.1f}) - avoid similar action patterns in future rallies"
         else:
             return f"Pong lesson learned: {meaning} (reward={reward:.1f})"
-    
+
     def generate_strategy_from_performance(self, wins, games_played, avg_reward):
         """Generate strategic insights from performance data specific to Pong"""
         win_rate = (wins / max(1, games_played)) * 100
@@ -635,7 +635,7 @@ class PongEnvironment:
     # [Keep all other existing methods unchanged - step, move_player_paddle, etc.]
     
     
-    def step(self, agent_action):
+    def step(self, agent_action, mini_byte_action):
         """Execute one game step with symbolic reward tracking"""
         # Store previous positions for collision detection
         self.previous_ball_x = self.ball_x

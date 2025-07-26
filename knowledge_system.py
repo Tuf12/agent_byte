@@ -377,14 +377,19 @@ class KnowledgeInterpreter:
 
         return action
 
-    def _avoid_edge_camping(self, action: int, state: np.ndarray, game_situation: Dict) -> int:
-        """Avoid staying at screen edges - FIXED for center-zero"""
-        paddle_y = float(game_situation['paddle_position'])  # 🔧 FIX: Ensure float for comparison
+    def _avoid_edge_camping(self, action, state, game_situation):
+        paddle_y = float(game_situation['paddle_position'])
+        ball_y = float(game_situation['ball_position'][1])
 
-        if paddle_y < -0.35:  # Too high (negative edge)
-            return 2  # Move down toward center (0.0)
-        elif paddle_y > 0.35:  # Too low (positive edge)
-            return 0  # Move up toward center (0.0)
+        # Allow edge camping IF ball is near the edge too
+        if paddle_y > 0.35:
+            # Only override if the ball is NOT in the bottom quarter
+            if ball_y < 0.3:  # If ball is far from bottom
+                return 0  # Move up toward center
+            # If ball is near the bottom, allow agent to stay
+        if paddle_y < -0.35:
+            if ball_y > -0.3:  # If ball is far from top
+                return 2  # Move down toward center
 
         return action
 
